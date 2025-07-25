@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta Sankhya</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="container">
+        <h1>Consulta de Endereçamento</h1>
+        <div class="form-grid">
+            <input type="text" id="filtro-sequencia" placeholder="Digite a Sequência">
+        </div>
+        <button id="btn-consultar">Consultar</button>
+        <div id="loading" class="hidden">Carregando...</div>
+        <div class="table-container">
+            <table id="tabela-resultados">
+                <thead>
+                    <tr>
+                        <th>Seq.</th>
+                        <th>Rua</th>
+                        <th>Prédio</th>
+                        <th>Apto</th>
+                        <th>Produto</th>
+                        <th>Descrição</th>
+                        <th>Marca</th>
+                        <th>Validade</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
