@@ -134,3 +134,14 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Arquivo de dependências do Node.js
+node_modules
+
+# Arquivo com as credenciais secretas
+.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
