@@ -14,19 +14,18 @@
     padding: 0;
 }
 
-html, body {
-    height: 100%;
-    overflow: hidden; /* Impede a rolagem do body */
+body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     background-color: var(--background-color);
     color: var(--text-color);
+    overflow: hidden; /* Impede a rolagem do body */
 }
 
 /* --- ESTILOS DAS PÁGINAS --- */
 .page {
     display: none;
     flex-direction: column;
-    height: 100%; /* Ocupa 100% da altura do body */
+    height: 100vh;
 }
 .page.active {
     display: flex;
@@ -37,8 +36,11 @@ html, body {
 .app-header {
     background-color: var(--primary-color);
     padding: 15px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    flex-shrink: 0; /* Impede que o header encolha */
+    flex-shrink: 0;
 }
 
 .search-bar {
@@ -77,7 +79,7 @@ html, body {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 20px;
     overflow-y: auto;
-    flex: 1; /* Faz esta área crescer e ocupar o espaço disponível */
+    flex: 1;
 }
 
 .result-card {
@@ -116,8 +118,8 @@ html, body {
 .details-content {
     padding: 20px;
     background-color: var(--background-color);
-    flex-grow: 1; /* Faz o conteúdo ocupar o espaço entre o header e os botões */
-    overflow-y: auto; /* Apenas esta área terá rolagem */
+    flex-grow: 1;
+    overflow-y: auto;
 }
 
 .detail-hero {
@@ -140,9 +142,10 @@ html, body {
     padding-left: 5px;
 }
 
+/* Por padrão (mobile), o grid tem 1 coluna */
 .details-grid { 
     display: grid;
-    grid-template-columns: 1fr; /* 1 coluna por padrão (mobile) */
+    grid-template-columns: 1fr;
     gap: 15px;
     margin-bottom: 25px;
 }
@@ -159,10 +162,9 @@ html, body {
     display: flex;
     gap: 15px;
     padding: 20px;
-    background-color: var(--card-background); /* Fundo branco para destacar */
-    /* Sombra para dar a impressão de que está "flutuando" */
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
-    flex-shrink: 0; /* Impede que a barra de botões encolha */
+    background-color: var(--background-color);
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 .btn-action { flex: 1; padding: 18px; font-size: 16px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; color: white; text-align: center; }
 .btn-baixar { background-color: #28a745; }
@@ -186,21 +188,21 @@ html, body {
 
 /* --- MEDIA QUERY PARA TELAS MAIORES (PC) --- */
 @media (min-width: 768px) {
+    /* Em telas maiores, o grid passa a ter 2 colunas */
     .details-grid { 
         grid-template-columns: 1fr 1fr;
     }
 
+    /* Centraliza e limita a largura do conteúdo para melhor leitura */
     .details-content {
         max-width: 800px;
         margin: 0 auto;
         width: 100%;
     }
 
+    /* Faz os botões de ação acompanharem a largura do conteúdo */
     .action-buttons {
         max-width: 840px; /* 800px do conteúdo + 40px do padding */
         margin: 0 auto;
-        background-color: var(--background-color);
-        box-shadow: none;
-        border-top: none;
     }
 }
