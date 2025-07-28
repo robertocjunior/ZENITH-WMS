@@ -1,12 +1,188 @@
-body { font-family: sans-serif; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
-.container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-h1 { text-align: center; color: #2c3e50; }
-.form-grid input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-button { width: 100%; padding: 15px; background-color: #2c3e50; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; transition: background-color 0.3s; }
-button:hover { background-color: #34495e; }
-.hidden { display: none; }
-#loading { text-align: center; padding: 20px; font-size: 18px; color: #3498db; }
-.table-container { width: 100%; overflow-x: auto; margin-top: 20px; }
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
-th { background-color: #f2f2f2; }
+:root {
+    --primary-color: #00529B; /* Azul Sankhya */
+    --secondary-color: #00A3E0;
+    --background-color: #f0f2f5;
+    --card-background: #ffffff;
+    --text-color: #333333;
+    --text-light: #777777;
+    --border-color: #e0e0e0;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    overflow: hidden; /* Impede a rolagem do body */
+}
+
+/* --- ESTILOS DAS PÁGINAS --- */
+.page {
+    display: none;
+    flex-direction: column;
+    height: 100vh;
+}
+.page.active {
+    display: flex;
+}
+
+
+/* --- TELA PRINCIPAL --- */
+.app-header {
+    background-color: var(--primary-color);
+    padding: 15px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    flex-shrink: 0;
+}
+
+.search-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.input-wrapper {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    background-color: var(--card-background);
+    border-radius: 8px;
+    padding: 5px 15px;
+}
+
+.input-wrapper i { color: var(--text-light); margin-right: 10px; }
+.input-wrapper input { width: 100%; border: none; outline: none; font-size: 16px; padding: 10px 0; background-color: transparent; }
+
+.search-bar button {
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 15px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    flex-shrink: 0;
+}
+
+.results-container {
+    padding: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.result-card {
+    background-color: var(--card-background);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--border-color);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+}
+.result-card:hover { transform: translateY(-5px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.card-header, .card-footer { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: var(--text-light); }
+.card-header span { font-weight: 500; color: var(--text-color); }
+.card-body { text-align: center; }
+.card-body .product-desc { font-size: 18px; font-weight: 600; margin-bottom: 5px; }
+.card-body .product-brand { font-size: 16px; color: var(--text-light); }
+.card-footer .product-code { background-color: #e9ecef; padding: 3px 8px; border-radius: 4px; font-family: 'Courier New', Courier, monospace; }
+.card-footer .product-validity { font-weight: 600; color: var(--primary-color); }
+
+/* --- TELA DE DETALHES (DESIGN MELHORADO) --- */
+.details-header {
+    display: flex;
+    align-items: center;
+    padding: 15px 20px;
+    background-color: var(--primary-color);
+    color: white;
+    flex-shrink: 0;
+}
+#btn-voltar { background: none; border: none; color: white; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; margin-right: 15px; padding: 5px; }
+#details-title { font-size: 18px; font-weight: 500; }
+
+.details-content {
+    padding: 20px;
+    background-color: var(--background-color);
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+/* Novo: Seção principal com informações do produto */
+.detail-hero {
+    background-color: var(--card-background);
+    padding: 25px;
+    text-align: center;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
+.detail-hero .product-desc { font-size: 22px; font-weight: 600; color: var(--text-color); margin-bottom: 10px; }
+.detail-hero .product-code { display: inline-block; background-color: #e9ecef; padding: 5px 10px; border-radius: 6px; font-family: 'Courier New', Courier, monospace; font-size: 14px; }
+
+/* Novo: Título para seções de detalhes */
+.details-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-left: 5px;
+}
+
+.details-grid { 
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+.detail-item { 
+    background-color: var(--card-background);
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.detail-item .label { font-size: 14px; color: var(--text-light); margin-bottom: 5px; }
+.detail-item .value { font-size: 18px; font-weight: 500; }
+
+.action-buttons {
+    display: flex;
+    gap: 15px;
+    padding: 20px;
+    background-color: var(--background-color);
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.btn-action { flex: 1; padding: 18px; font-size: 16px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; color: white; text-align: center; }
+.btn-baixar { background-color: #28a745; }
+.btn-transferir { background-color: #007bff; }
+
+/* --- INDICADORES DE ESTADO --- */
+.loading-indicator, .empty-state {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-light);
+}
+.empty-state i { width: 60px; height: 60px; color: #bdc3c7; margin-bottom: 20px; }
+.empty-state p { font-size: 18px; font-weight: 500; }
+.empty-state span { font-size: 14px; }
+.spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: var(--primary-color); animation: spin 1s ease infinite; margin: 0 auto 10px auto; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.hidden { display: none !important; }

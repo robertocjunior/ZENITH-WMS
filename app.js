@@ -1,30 +1,56 @@
-// app.js
+// A constante PROXY_URL agora é lida do arquivo config.js,
+// que é carregado antes deste no index.html.
 
-/**
- * Função principal que lida com a consulta.
- */
+document.addEventListener('DOMContentLoaded', () => {
+    // Listeners da página principal
+    document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
+    document.getElementById('filtro-sequencia').addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') handleConsulta();
+    });
+    
+    // Listener da página de detalhes
+    document.getElementById('btn-voltar').addEventListener('click', showMainPage);
+    
+    // Listeners para os botões de ação (exemplo)
+    document.querySelector('.btn-baixar').addEventListener('click', () => alert('Função "Baixar" não implementada.'));
+    document.querySelector('.btn-transferir').addEventListener('click', () => alert('Função "Transferir" não implementada.'));
+});
+
+// --- FUNÇÕES DE CONTROLE DE PÁGINA ---
+
+function showMainPage() {
+    document.getElementById('main-page').classList.add('active');
+    document.getElementById('details-page').classList.remove('active');
+}
+
+function showDetailsPage() {
+    document.getElementById('main-page').classList.remove('active');
+    document.getElementById('details-page').classList.add('active');
+}
+
+
+// --- FUNÇÕES DE API E RENDERIZAÇÃO ---
+
 async function handleConsulta() {
     const loading = document.getElementById('loading');
-    const tabelaBody = document.querySelector("#tabela-resultados tbody");
+    const resultsContainer = document.getElementById('results-container');
+    const emptyState = document.getElementById('empty-state');
     
-    // Declara o bearerToken aqui para que ele seja acessível no bloco 'finally'
     let bearerToken = null;
-
-    tabelaBody.innerHTML = '';
+    resultsContainer.innerHTML = '';
     loading.classList.remove('hidden');
+    emptyState.classList.add('hidden');
 
     try {
-        // ETAPA 1: Login
-        const loginResponse = await fetch('http://192.168.2.57:3000/login', { method: 'POST' });
-        if (!loginResponse.ok) throw new Error('Falha na autenticação com o proxy.');
+        const loginResponse = await fetch(`${PROXY_URL}/login`, { method: 'POST' });
+        if (!loginResponse.ok) throw new Error(`Falha na autenticação: ${loginResponse.statusText}`);
         
         const loginData = await loginResponse.json();
-        bearerToken = loginData.bearerToken; // Atribui o token obtido
+        bearerToken = loginData.bearerToken;
         if (!bearerToken) throw new Error('Não foi possível obter o Bearer Token.');
 
-        // ETAPA 2: Montar o SQL
         const sequencia = document.getElementById('filtro-sequencia').value;
-        let sqlFinal = "SELECT ENDE.SEQEND AS SEQUENCIA, ENDE.CODRUA AS RUA, ENDE.CODPRD AS PREDIO, ENDE.CODAPT AS APTO, ENDE.CODPROD AS PRODUTO, PRO.DESCRPROD AS DESCRICAO, PRO.MARCA AS MARCA, ENDE.DATVAL AS VALIDADE FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = 1";
+        let sqlFinal = "SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = 1";
         if (sequencia) {
             sqlFinal += ` AND ENDE.SEQEND LIKE '${sequencia}%'`;
         }
@@ -33,23 +59,22 @@ async function handleConsulta() {
             "requestBody": { "sql": sqlFinal, "params": {} }
         };
         
-        // ETAPA 3: Executar a consulta
-        const queryResponse = await fetch('http://192.168.2.57:3000/query', {
+        const queryResponse = await fetch(`${PROXY_URL}/query`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ bearerToken, requestBody })
         });
-        if (!queryResponse.ok) throw new Error('Falha na consulta com o proxy.');
+        if (!queryResponse.ok) throw new Error(`Falha na consulta: ${queryResponse.statusText}`);
         const queryData = await queryResponse.json();
         if (queryData.status === "1") {
-            renderizarTabela(queryData.responseBody.rows);
+            renderizarCards(queryData.responseBody.rows);
         } else {
             throw new Error(queryData.statusMessage);
         }
     } catch (error) {
         alert('Erro: ' + error.message);
+        emptyState.classList.remove('hidden');
     } finally {
-        // ETAPA FINAL: Logout (sempre executa, com sucesso ou erro)
         if (bearerToken) {
             await logoutSankhya(bearerToken);
         }
@@ -57,60 +82,149 @@ async function handleConsulta() {
     }
 }
 
-/**
- * Nova função para fazer logout, invalidando o token.
- */
+async function fetchAndShowDetails(sequencia) {
+    const loading = document.getElementById('loading');
+    const detailsContent = document.getElementById('details-content');
+
+    loading.classList.remove('hidden');
+    detailsContent.innerHTML = ''; // Limpa conteúdo antigo
+
+    let bearerToken = null;
+    try {
+        // Login
+        const loginResponse = await fetch(`${PROXY_URL}/login`, { method: 'POST' });
+        if (!loginResponse.ok) throw new Error('Falha na autenticação.');
+        const loginData = await loginResponse.json();
+        bearerToken = loginData.bearerToken;
+        if (!bearerToken) throw new Error('Não foi possível obter o Bearer Token.');
+
+        // Monta a query específica
+        const sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = 1 AND ENDE.SEQEND = ${sequencia}`;
+        const requestBody = {
+            "serviceName": "DbExplorerSP.executeQuery",
+            "requestBody": { "sql": sql, "params": {} }
+        };
+
+        // Faz a consulta
+        const queryResponse = await fetch(`${PROXY_URL}/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bearerToken, requestBody })
+        });
+        if (!queryResponse.ok) throw new Error('Falha na consulta de detalhes.');
+        const queryData = await queryResponse.json();
+
+        if (queryData.status === "1" && queryData.responseBody.rows.length > 0) {
+            const itemDetails = queryData.responseBody.rows[0];
+            populateDetails(itemDetails);
+            showDetailsPage(); // Mostra a página de detalhes
+        } else {
+            throw new Error('Produto não encontrado ou erro na consulta.');
+        }
+
+    } catch (error) {
+        alert('Erro ao buscar detalhes: ' + error.message);
+        showMainPage(); // Volta para a página principal em caso de erro
+    } finally {
+        if (bearerToken) {
+            await logoutSankhya(bearerToken);
+        }
+        loading.classList.add('hidden');
+    }
+}
+
+function populateDetails(details) {
+    const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval] = details;
+    const detailsContent = document.getElementById('details-content');
+
+    detailsContent.innerHTML = `
+        <div class="detail-product-header">
+            <div class="product-code">Cód. Prod.: ${codprod}</div>
+            <h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3>
+        </div>
+        <div class="details-grid">
+            <div class="detail-item">
+                <div class="label">Rua</div>
+                <div class="value">${rua}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Prédio</div>
+                <div class="value">${predio}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Sequência</div>
+                <div class="value">${sequencia}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Apto</div>
+                <div class="value">${apto}</div>
+            </div>
+        </div>
+        <div class="detail-footer">
+            <div class="detail-item">
+                <div class="label">Marca</div>
+                <div class="value">${marca || 'N/A'}</div>
+            </div>
+            <div class="detail-item" style="text-align: right;">
+                <div class="label">Validade</div>
+                <div class="value">${formatarData(datval)}</div>
+            </div>
+        </div>
+    `;
+    feather.replace(); // Re-ativa os ícones
+}
+
+function renderizarCards(rows) {
+    const resultsContainer = document.getElementById('results-container');
+    const emptyState = document.getElementById('empty-state');
+    resultsContainer.innerHTML = '';
+
+    if (!rows || rows.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
+    }
+
+    emptyState.classList.add('hidden');
+
+    rows.forEach(row => {
+        const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval] = row;
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.innerHTML = `
+            <div class="card-header">
+                <p>Seq: <span>${sequencia}</span></p>
+                <p>Rua: <span>${rua}</span></p>
+                <p>Prédio: <span>${predio}</span></p>
+                <p>Apto: <span>${apto}</span></p>
+            </div>
+            <div class="card-body">
+                <p class="product-desc">${descrprod || 'Produto sem descrição'}</p>
+                <p class="product-brand">${marca || 'Marca não informada'}</p>
+            </div>
+            <div class="card-footer">
+                <span class="product-code">Cód: ${codprod}</span>
+                <span class="product-validity">Val: ${formatarData(datval)}</span>
+            </div>
+        `;
+        card.addEventListener('click', () => fetchAndShowDetails(sequencia));
+        resultsContainer.appendChild(card);
+    });
+}
+
 async function logoutSankhya(token) {
     console.log("Encerrando a sessão...");
     try {
-        const logoutResponse = await fetch('http://192.168.2.57:3000/logout', {
+        await fetch(`${PROXY_URL}/logout`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ bearerToken: token })
         });
-        const logoutData = await logoutResponse.json();
-        if (logoutData.status === "1") {
-            console.log("Sessão encerrada com sucesso.");
-        } else {
-            // Apenas avisa no console, não precisa mostrar alerta para o usuário
-            console.warn("Sessão não pôde ser encerrada no Sankhya:", logoutData.statusMessage);
-        }
     } catch (error) {
-        console.error("Erro na chamada de logout via proxy:", error.message);
+        console.error("Erro ao tentar fazer logout:", error.message);
     }
 }
 
-/**
- * Função que desenha os resultados na tabela HTML.
- */
-function renderizarTabela(rows) {
-    // ... (esta função continua exatamente igual a antes)
-    const tabelaBody = document.querySelector("#tabela-resultados tbody");
-    if (!rows || rows.length === 0) {
-        tabelaBody.innerHTML = '<tr><td colspan="8">Nenhum resultado encontrado.</td></tr>';
-        return;
-    }
-    let html = '';
-    rows.forEach(row => {
-        let tr = '<tr>';
-        row.forEach((cell, index) => {
-            let cellValue = cell !== null ? cell : '';
-            if (index === 7) { // Formata a 8ª coluna (validade)
-                cellValue = formatarData(cellValue);
-            }
-            tr += `<td>${cellValue}</td>`;
-        });
-        tr += '</tr>';
-        html += tr;
-    });
-    tabelaBody.innerHTML = html;
-}
-
-/**
- * Função para formatar a data.
- */
 function formatarData(dataString) {
-    // ... (esta função continua exatamente igual a antes)
     if (!dataString || typeof dataString !== 'string') return '';
     const parteData = dataString.split(' ')[0];
     if (parteData.length !== 8) return dataString;
@@ -119,8 +233,3 @@ function formatarData(dataString) {
     const ano = parteData.substring(4, 8);
     return `${dia}/${mes}/${ano}`;
 }
-
-// Adiciona o listener quando o DOM carregar
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
-});

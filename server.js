@@ -1,5 +1,5 @@
 // server.js
-require('dotenv').config(); // Carrega as variáveis do arquivo .env
+require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
@@ -9,9 +9,7 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Carrega as variáveis de ambiente
 const SANKHYA_API_URL = process.env.SANKHYA_API_URL;
-const PROXY_URL = process.env.PROXY_URL;
 
 // Rota de login
 app.post('/login', async (req, res) => {
@@ -75,8 +73,9 @@ app.post('/logout', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    // Mensagem de log corrigida para usar a variável PROXY_URL.
-    // Se PROXY_URL não estiver definida, ele usará um valor padrão com a porta.
-    console.log(`Proxy para Sankhya rodando em: ${PROXY_URL || `http://localhost:${PORT}`}`);
+
+// --- MUDANÇA PRINCIPAL AQUI ---
+// O '0.0.0.0' faz o servidor aceitar conexões de outros dispositivos na rede.
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Proxy para Sankhya rodando na porta http://192.168.2.57:${PORT}`);
 });

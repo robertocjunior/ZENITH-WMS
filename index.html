@@ -3,36 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consulta Sankhya</title>
+    <title>Consulta de Endereçamento</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
+    <script src="https://unpkg.com/feather-icons"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>Consulta de Endereçamento</h1>
-        <div class="form-grid">
-            <input type="text" id="filtro-sequencia" placeholder="Digite a Sequência">
+    <div id="main-page" class="page active">
+        <header class="app-header">
+            <div class="search-bar">
+                <div class="input-wrapper">
+                    <i data-feather="search"></i>
+                    <input type="text" id="filtro-sequencia" placeholder="Buscar por Sequência..." autocomplete="off">
+                </div>
+                <button id="btn-consultar">Buscar</button>
+            </div>
+        </header>
+
+        <main id="results-container" class="results-container"></main>
+
+        <div id="loading" class="loading-indicator hidden">
+            <div class="spinner"></div>
+            <p>Carregando...</p>
         </div>
-        <button id="btn-consultar">Consultar</button>
-        <div id="loading" class="hidden">Carregando...</div>
-        <div class="table-container">
-            <table id="tabela-resultados">
-                <thead>
-                    <tr>
-                        <th>Seq.</th>
-                        <th>Rua</th>
-                        <th>Prédio</th>
-                        <th>Apto</th>
-                        <th>Produto</th>
-                        <th>Descrição</th>
-                        <th>Marca</th>
-                        <th>Validade</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+
+        <div id="empty-state" class="empty-state">
+            <i data-feather="package"></i>
+            <p>Nenhum resultado para exibir</p>
+            <span>Digite uma sequência para começar</span>
         </div>
     </div>
+
+    <div id="details-page" class="page">
+        <header class="details-header">
+            <button id="btn-voltar"><i data-feather="arrow-left"></i> Voltar</button>
+            <h2 id="details-title">Detalhes do Endereço</h2>
+        </header>
+        <div id="details-content" class="details-content">
+            </div>
+        <div class="action-buttons">
+            <button class="btn-action btn-baixar">Baixar</button>
+            <button class="btn-action btn-transferir">Transferir</button>
+        </div>
+    </div>
+
+    <script>
+      // Ativa os ícones do Feather
+      feather.replace();
+    </script>
+    
+    <script src="config.js"></script>
+    
     <script src="app.js"></script>
 </body>
 </html>
