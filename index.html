@@ -45,11 +45,33 @@
             <p>Disponível: <strong id="modal-qtd-disponivel"></strong></p>
             <div class="modal-input-group">
                 <label for="modal-qtd-baixa">Quantidade a baixar:</label>
-                <input type="number" id="modal-qtd-baixa" placeholder="0" min="1" step="1">
+                <input type="number" id="modal-qtd-baixa" placeholder="0" min="1" step="1" autocomplete="off">
             </div>
             <div class="modal-actions">
                 <button id="btn-cancelar-baixa" class="btn-modal btn-cancel">Cancelar</button>
                 <button id="btn-confirmar-baixa" class="btn-modal btn-confirm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="transfer-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Transferir Produto</h3>
+            <p>Disponível: <strong id="modal-qtd-disponivel-transfer"></strong></p>
+            
+            <div class="modal-input-group">
+                <label for="modal-qtd-transfer">Quantidade a transferir:</label>
+                <input type="number" id="modal-qtd-transfer" placeholder="0" min="1" step="1" autocomplete="off">
+            </div>
+
+            <div class="modal-input-group">
+                <label for="modal-enddes-transfer">Endereço de Destino:</label>
+                <input type="text" id="modal-enddes-transfer" placeholder="Digite o endereço de destino" autocomplete="off">
+            </div>
+
+            <div class="modal-actions">
+                <button id="btn-cancelar-transfer" class="btn-modal btn-cancel">Cancelar</button>
+                <button id="btn-confirmar-transfer" class="btn-modal btn-confirm">Confirmar</button>
             </div>
         </div>
     </div>
@@ -62,8 +84,7 @@
     <div id="confirm-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h3 id="modal-confirm-title">Aviso</h3>
-            <p id="modal-confirm-message"></p>
-            <div class="modal-actions">
+            <div id="modal-confirm-message"></div> <div class="modal-actions">
                 <button id="btn-close-confirm" class="btn-modal btn-confirm">OK</button>
             </div>
         </div>

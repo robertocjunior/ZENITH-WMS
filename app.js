@@ -1,17 +1,97 @@
-// app.js (versão completa com pop-up customizado)
-
 let currentItemDetails = null;
 
-// --- Funções do Modal de Confirmação ---
+/**
+ * NOVO: Processa a string de erro HTML do Sankhya para extrair uma mensagem amigável.
+ * @param {string} htmlString - A mensagem de erro bruta contendo HTML.
+ * @returns {string} - Uma string HTML formatada e limpa para exibição.
+ */
+function parseSankhyaError(htmlString) {
+    // Se a string não parece ser HTML, retorna como está.
+    if (!htmlString || !htmlString.includes('<')) {
+        return htmlString;
+    }
+
+    try {
+        // Cria um elemento DOM temporário para analisar a string HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlString;
+        const textContent = tempDiv.textContent || tempDiv.innerText;
+
+        // Tenta extrair as partes mais importantes
+        const motivoMatch = textContent.match(/Motivo:\s*([^]+?)(?=Solução:|Informações para o Implantador|$)/);
+        const solucaoMatch = textContent.match(/Solução:\s*([^]+?)(?=Informações para o Implantador|$)/);
+
+        const motivo = motivoMatch ? motivoMatch[1].trim() : '';
+        const solucao = solucaoMatch ? solucaoMatch[1].trim() : '';
+        
+        if (motivo || solucao) {
+            let formattedMessage = '';
+            if (motivo) {
+                formattedMessage += `<p style="margin-bottom:10px;"><strong>Motivo:</strong> ${motivo}</p>`;
+            }
+            if (solucao) {
+                formattedMessage += `<p><strong>Solução:</strong> ${solucao}</p>`;
+            }
+            return formattedMessage;
+        }
+
+        // Fallback: Se não encontrar 'Motivo' ou 'Solução', limpa o básico.
+        const cleanedText = textContent.replace(/ORA-\d+:/g, '').replace(/Regra Personalizada:/g, '').trim();
+        return cleanedText || "Ocorreu um erro desconhecido.";
+
+    } catch (e) {
+        // Em caso de erro no parsing, retorna a string original de forma segura.
+        return htmlString.replace(/<[^>]*>/g, ' '); // Remove as tags
+    }
+}
+
+// --- Funções dos Modais ---
 function openConfirmModal(message, title = 'Aviso') {
     document.getElementById('modal-confirm-title').textContent = title;
-    document.getElementById('modal-confirm-message').textContent = message;
+    // MUDANÇA: Usa innerHTML para poder renderizar tags como <p> e <strong>
+    document.getElementById('modal-confirm-message').innerHTML = message;
     document.getElementById('confirm-modal').classList.remove('hidden');
 }
 
 function closeConfirmModal() {
     document.getElementById('confirm-modal').classList.add('hidden');
 }
+
+function openBaixaModal() {
+    if (!currentItemDetails) {
+        openConfirmModal("Erro: Nenhum item selecionado.");
+        return;
+    }
+    const maxQtd = currentItemDetails.quantidade;
+    document.getElementById('modal-qtd-disponivel').textContent = maxQtd;
+    const qtdInput = document.getElementById('modal-qtd-baixa');
+    qtdInput.value = '';
+    qtdInput.max = maxQtd;
+    document.getElementById('baixa-modal').classList.remove('hidden');
+}
+
+function closeBaixaModal() {
+    document.getElementById('baixa-modal').classList.add('hidden');
+}
+
+function openTransferModal() {
+    if (!currentItemDetails) {
+        openConfirmModal("Erro: Nenhum item selecionado.");
+        return;
+    }
+    const maxQtd = currentItemDetails.quantidade;
+    document.getElementById('modal-qtd-disponivel-transfer').textContent = maxQtd;
+    const qtdInput = document.getElementById('modal-qtd-transfer');
+    qtdInput.value = '';
+    qtdInput.max = maxQtd;
+    document.getElementById('modal-enddes-transfer').value = '';
+    document.getElementById('transfer-modal').classList.remove('hidden');
+}
+
+function closeTransferModal() {
+    document.getElementById('transfer-modal').classList.add('hidden');
+}
+
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
@@ -20,10 +100,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('btn-voltar').addEventListener('click', showMainPage);
     document.querySelector('.btn-baixar').addEventListener('click', openBaixaModal);
-    document.querySelector('.btn-transferir').addEventListener('click', () => openConfirmModal('Função "Transferir" não implementada.'));
+    document.querySelector('.btn-transferir').addEventListener('click', openTransferModal);
     document.getElementById('btn-cancelar-baixa').addEventListener('click', closeBaixaModal);
     document.getElementById('btn-confirmar-baixa').addEventListener('click', handleBaixa);
-    // Listener para o novo botão 'OK' do pop-up
+    document.getElementById('btn-cancelar-transfer').addEventListener('click', closeTransferModal);
+    document.getElementById('btn-confirmar-transfer').addEventListener('click', handleTransfer);
     document.getElementById('btn-close-confirm').addEventListener('click', closeConfirmModal);
 });
 
@@ -45,23 +126,6 @@ function showDetailsPage() {
     document.getElementById('details-page').classList.add('active');
 }
 
-function openBaixaModal() {
-    if (!currentItemDetails) {
-        openConfirmModal("Erro: Nenhum item selecionado.");
-        return;
-    }
-    const maxQtd = currentItemDetails.quantidade;
-    document.getElementById('modal-qtd-disponivel').textContent = maxQtd;
-    const qtdInput = document.getElementById('modal-qtd-baixa');
-    qtdInput.value = '';
-    qtdInput.max = maxQtd;
-    document.getElementById('baixa-modal').classList.remove('hidden');
-}
-
-function closeBaixaModal() {
-    document.getElementById('baixa-modal').classList.add('hidden');
-}
-
 // --- LÓGICA DE API CENTRALIZADA ---
 async function performSankhyaOperation(operation) {
     let bearerToken = null;
@@ -76,8 +140,9 @@ async function performSankhyaOperation(operation) {
         await operation(bearerToken);
 
     } catch (error) {
-        // Usa o novo pop-up para exibir erros
-        openConfirmModal('Erro: ' + error.message, 'Falha na Operação');
+        // MUDANÇA: Chama a nova função para limpar a mensagem de erro antes de exibi-la
+        const friendlyMessage = parseSankhyaError(error.message);
+        openConfirmModal(friendlyMessage, 'Falha na Operação');
         return false;
     } finally {
         if (bearerToken) {
@@ -162,11 +227,7 @@ async function handleBaixa() {
         const hoje = new Date().toLocaleDateString('pt-BR');
         const cabecalhoBody = {
             serviceName: "DatasetSP.save",
-            requestBody: {
-                entityName: "AD_BXAEND",
-                fields: ["SEQBAI", "DATGER"],
-                records: [{ values: { "1": hoje } }]
-            }
+            requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] }
         };
         const cabecalhoRes = await fetch(`${PROXY_URL}/api`, {
             method: 'POST',
@@ -219,11 +280,9 @@ async function handleBaixa() {
             body: JSON.stringify({ bearerToken, ...stpBody })
         });
         const stpData = await stpRes.json();
-
         if (stpData.status !== "1" && stpData.status !== "2") {
             throw new Error(`Falha ao executar procedimento: ${stpData.statusMessage}`);
         }
-        
         if (stpData.statusMessage) {
             openConfirmModal(stpData.statusMessage, 'Sucesso!');
         }
@@ -234,6 +293,104 @@ async function handleBaixa() {
         handleConsulta();
     }
 }
+
+async function handleTransfer() {
+    const qtdInput = document.getElementById('modal-qtd-transfer');
+    const endDesInput = document.getElementById('modal-enddes-transfer');
+    
+    const quantidade = parseInt(qtdInput.value, 10);
+    const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
+    const enderecoDestino = endDesInput.value.trim();
+
+    if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) {
+        openConfirmModal("Por favor, insira uma quantidade válida.");
+        return;
+    }
+    if (!enderecoDestino) {
+        openConfirmModal("Por favor, insira o endereço de destino.");
+        return;
+    }
+    closeTransferModal();
+
+    const success = await performSankhyaOperation(async (bearerToken) => {
+        // ETAPA 1: Criar o cabeçalho
+        const hoje = new Date().toLocaleDateString('pt-BR');
+        const cabecalhoBody = {
+            serviceName: "DatasetSP.save",
+            requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] }
+        };
+        const cabecalhoRes = await fetch(`${PROXY_URL}/api`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bearerToken, ...cabecalhoBody })
+        });
+        const cabecalhoData = await cabecalhoRes.json();
+        if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) {
+            throw new Error(`Falha ao criar cabeçalho: ${cabecalhoData.statusMessage || 'Resposta inválida da API.'}`);
+        }
+        const seqBai = cabecalhoData.responseBody.result[0][0];
+
+        // ETAPA 2: Criar o item de transferência
+        const itemBody = {
+            serviceName: "DatasetSP.save",
+            requestBody: {
+                entityName: "AD_IBXEND",
+                standAlone: false,
+                fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
+                records: [{
+                    values: {
+                        "1": seqBai.toString(),
+                        "2": "1",
+                        "3": currentItemDetails.sequencia.toString(),
+                        "4": "1",
+                        "5": enderecoDestino,
+                        "6": quantidade.toString()
+                    }
+                }]
+            }
+        };
+        const itemRes = await fetch(`${PROXY_URL}/api`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bearerToken, ...itemBody })
+        });
+        const itemData = await itemRes.json();
+        if (itemData.status !== "1") {
+            throw new Error(`${itemData.statusMessage || 'Erro desconhecido.'}`);
+        }
+
+        // ETAPA 3: Executar a procedure
+        const stpBody = {
+            serviceName: "ActionButtonsSP.executeSTP",
+            requestBody: {
+                stpCall: {
+                    actionID: "20",
+                    procName: "NIC_STP_BAIXA_END",
+                    rootEntity: "AD_BXAEND",
+                    rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] }
+                }
+            }
+        };
+        const stpRes = await fetch(`${PROXY_URL}/api`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bearerToken, ...stpBody })
+        });
+        const stpData = await stpRes.json();
+        if (stpData.status !== "1" && stpData.status !== "2") {
+            throw new Error(`${stpData.statusMessage || 'Erro desconhecido.'}`);
+        }
+        if (stpData.statusMessage) {
+            openConfirmModal(stpData.statusMessage, 'Sucesso!');
+        }
+    });
+
+    if (success) {
+        showMainPage();
+        handleConsulta();
+    }
+}
+
 
 // --- FUNÇÕES DE RENDERIZAÇÃO ---
 function renderizarCards(rows) {
