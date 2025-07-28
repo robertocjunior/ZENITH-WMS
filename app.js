@@ -95,7 +95,10 @@ async function fetchAndShowDetails(sequencia) {
         bearerToken = loginData.bearerToken;
         if (!bearerToken) throw new Error('Não foi possível obter o Bearer Token.');
 
-        const sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = 1 AND ENDE.SEQEND = ${sequencia}`;
+        // ***** CORREÇÃO APLICADA AQUI *****
+        // Trocado ENDE.QTDUNID por ENDE.QTDPRO
+        const sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = 1 AND ENDE.SEQEND = ${sequencia}`;
+        
         const requestBody = {
             "serviceName": "DbExplorerSP.executeQuery",
             "requestBody": { "sql": sql, "params": {} }
@@ -129,16 +132,34 @@ async function fetchAndShowDetails(sequencia) {
 }
 
 function populateDetails(details) {
-    const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval] = details;
+    // A variável 'quantidade' agora receberá o valor de QTDPRO
+    const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade] = details;
     const detailsContent = document.getElementById('details-content');
 
-    // --- ESTRUTURA HTML SIMPLIFICADA PARA OS DETALHES ---
     detailsContent.innerHTML = `
         <div class="detail-hero">
             <h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3>
             <div class="product-code">Cód. Prod.: ${codprod}</div>
         </div>
 
+        <div class="details-section">
+            <h4 class="details-section-title">Informações</h4>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="label">Marca</div>
+                    <div class="value">${marca || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="label">Validade</div>
+                    <div class="value">${formatarData(datval)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="label">Quantidade</div>
+                    <div class="value">${quantidade || 0}</div>
+                </div>
+            </div>
+        </div>
+        
         <div class="details-section">
             <h4 class="details-section-title">Localização</h4>
             <div class="details-grid">
@@ -157,14 +178,6 @@ function populateDetails(details) {
                 <div class="detail-item">
                     <div class="label">Apto</div>
                     <div class="value">${apto}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="label">Marca</div>
-                    <div class="value">${marca || 'N/A'}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="label">Validade</div>
-                    <div class="value">${formatarData(datval)}</div>
                 </div>
             </div>
         </div>
