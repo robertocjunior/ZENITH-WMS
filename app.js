@@ -1,25 +1,23 @@
 let currentItemDetails = null;
 
 /**
- * NOVO: Processa a string de erro HTML do Sankhya para extrair uma mensagem amigável.
- * @param {string} htmlString - A mensagem de erro bruta contendo HTML.
+ * REVISADO: Processa a string de erro HTML do Sankhya para extrair uma mensagem amigável.
+ * @param {string} rawMessage - A mensagem de erro bruta, que pode conter HTML.
  * @returns {string} - Uma string HTML formatada e limpa para exibição.
  */
-function parseSankhyaError(htmlString) {
-    // Se a string não parece ser HTML, retorna como está.
-    if (!htmlString || !htmlString.includes('<')) {
-        return htmlString;
+function parseSankhyaError(rawMessage) {
+    if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.includes('<')) {
+        return rawMessage || 'Ocorreu um erro desconhecido.';
     }
 
     try {
-        // Cria um elemento DOM temporário para analisar a string HTML
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = htmlString;
+        tempDiv.innerHTML = rawMessage;
         const textContent = tempDiv.textContent || tempDiv.innerText;
 
-        // Tenta extrair as partes mais importantes
-        const motivoMatch = textContent.match(/Motivo:\s*([^]+?)(?=Solução:|Informações para o Implantador|$)/);
-        const solucaoMatch = textContent.match(/Solução:\s*([^]+?)(?=Informações para o Implantador|$)/);
+        // Expressão regular mais robusta para capturar o conteúdo
+        const motivoMatch = textContent.match(/Motivo:\s*([\s\S]+?)(?=Solução:|Informações para o Implantador|$)/);
+        const solucaoMatch = textContent.match(/Solução:\s*([\s\S]+?)(?=Informações para o Implantador|$)/);
 
         const motivo = motivoMatch ? motivoMatch[1].trim() : '';
         const solucao = solucaoMatch ? solucaoMatch[1].trim() : '';
@@ -35,20 +33,20 @@ function parseSankhyaError(htmlString) {
             return formattedMessage;
         }
 
-        // Fallback: Se não encontrar 'Motivo' ou 'Solução', limpa o básico.
-        const cleanedText = textContent.replace(/ORA-\d+:/g, '').replace(/Regra Personalizada:/g, '').trim();
-        return cleanedText || "Ocorreu um erro desconhecido.";
+        // Fallback: se não encontrar os padrões, limpa o texto o melhor possível
+        const cleanedText = textContent.replace(/ORA-\d+.*|Regra Personalizada:/g, '').trim();
+        return cleanedText || "Ocorreu um erro na operação.";
 
     } catch (e) {
-        // Em caso de erro no parsing, retorna a string original de forma segura.
-        return htmlString.replace(/<[^>]*>/g, ' '); // Remove as tags
+        // Em caso de erro no parsing, apenas remove as tags e retorna.
+        return rawMessage.replace(/<[^>]*>/g, ' ');
     }
 }
+
 
 // --- Funções dos Modais ---
 function openConfirmModal(message, title = 'Aviso') {
     document.getElementById('modal-confirm-title').textContent = title;
-    // MUDANÇA: Usa innerHTML para poder renderizar tags como <p> e <strong>
     document.getElementById('modal-confirm-message').innerHTML = message;
     document.getElementById('confirm-modal').classList.remove('hidden');
 }
@@ -140,7 +138,7 @@ async function performSankhyaOperation(operation) {
         await operation(bearerToken);
 
     } catch (error) {
-        // MUDANÇA: Chama a nova função para limpar a mensagem de erro antes de exibi-la
+        // REVISADO: Chama a nova função para limpar a mensagem de erro antes de exibi-la
         const friendlyMessage = parseSankhyaError(error.message);
         openConfirmModal(friendlyMessage, 'Falha na Operação');
         return false;
@@ -236,7 +234,7 @@ async function handleBaixa() {
         });
         const cabecalhoData = await cabecalhoRes.json();
         if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) {
-            throw new Error(`Falha ao criar cabeçalho: ${cabecalhoData.statusMessage || 'Resposta inválida da API.'}`);
+            throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API ao criar cabeçalho.');
         }
         const seqBai = cabecalhoData.responseBody.result[0][0];
 
@@ -247,8 +245,7 @@ async function handleBaixa() {
                 fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
                 records: [{
                     values: {
-                        "1": seqBai.toString(),
-                        "2": "1",
+                        "1": seqBai.toString(), "2": "1",
                         "3": currentItemDetails.sequencia.toString(),
                         "4": qtdBaixar.toString()
                     }
@@ -261,15 +258,13 @@ async function handleBaixa() {
             body: JSON.stringify({ bearerToken, ...itemBody })
         });
         const itemData = await itemRes.json();
-        if (itemData.status !== "1") throw new Error(`Falha ao criar item: ${itemData.statusMessage}`);
+        if (itemData.status !== "1") throw new Error(itemData.statusMessage);
 
         const stpBody = {
             serviceName: "ActionButtonsSP.executeSTP",
             requestBody: {
                 stpCall: {
-                    actionID: "20",
-                    procName: "NIC_STP_BAIXA_END",
-                    rootEntity: "AD_BXAEND",
+                    actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND",
                     rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] }
                 }
             }
@@ -280,9 +275,8 @@ async function handleBaixa() {
             body: JSON.stringify({ bearerToken, ...stpBody })
         });
         const stpData = await stpRes.json();
-        if (stpData.status !== "1" && stpData.status !== "2") {
-            throw new Error(`Falha ao executar procedimento: ${stpData.statusMessage}`);
-        }
+        if (stpData.status !== "1" && stpData.status !== "2") throw new Error(stpData.statusMessage);
+        
         if (stpData.statusMessage) {
             openConfirmModal(stpData.statusMessage, 'Sucesso!');
         }
@@ -313,7 +307,6 @@ async function handleTransfer() {
     closeTransferModal();
 
     const success = await performSankhyaOperation(async (bearerToken) => {
-        // ETAPA 1: Criar o cabeçalho
         const hoje = new Date().toLocaleDateString('pt-BR');
         const cabecalhoBody = {
             serviceName: "DatasetSP.save",
@@ -326,25 +319,20 @@ async function handleTransfer() {
         });
         const cabecalhoData = await cabecalhoRes.json();
         if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) {
-            throw new Error(`Falha ao criar cabeçalho: ${cabecalhoData.statusMessage || 'Resposta inválida da API.'}`);
+            throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API ao criar cabeçalho.');
         }
         const seqBai = cabecalhoData.responseBody.result[0][0];
 
-        // ETAPA 2: Criar o item de transferência
         const itemBody = {
             serviceName: "DatasetSP.save",
             requestBody: {
-                entityName: "AD_IBXEND",
-                standAlone: false,
+                entityName: "AD_IBXEND", standAlone: false,
                 fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
                 records: [{
                     values: {
-                        "1": seqBai.toString(),
-                        "2": "1",
+                        "1": seqBai.toString(), "2": "1",
                         "3": currentItemDetails.sequencia.toString(),
-                        "4": "1",
-                        "5": enderecoDestino,
-                        "6": quantidade.toString()
+                        "4": "1", "5": enderecoDestino, "6": quantidade.toString()
                     }
                 }]
             }
@@ -355,18 +343,13 @@ async function handleTransfer() {
             body: JSON.stringify({ bearerToken, ...itemBody })
         });
         const itemData = await itemRes.json();
-        if (itemData.status !== "1") {
-            throw new Error(`${itemData.statusMessage || 'Erro desconhecido.'}`);
-        }
+        if (itemData.status !== "1") throw new Error(itemData.statusMessage);
 
-        // ETAPA 3: Executar a procedure
         const stpBody = {
             serviceName: "ActionButtonsSP.executeSTP",
             requestBody: {
                 stpCall: {
-                    actionID: "20",
-                    procName: "NIC_STP_BAIXA_END",
-                    rootEntity: "AD_BXAEND",
+                    actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND",
                     rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] }
                 }
             }
@@ -377,9 +360,8 @@ async function handleTransfer() {
             body: JSON.stringify({ bearerToken, ...stpBody })
         });
         const stpData = await stpRes.json();
-        if (stpData.status !== "1" && stpData.status !== "2") {
-            throw new Error(`${stpData.statusMessage || 'Erro desconhecido.'}`);
-        }
+        if (stpData.status !== "1" && stpData.status !== "2") throw new Error(stpData.statusMessage);
+        
         if (stpData.statusMessage) {
             openConfirmModal(stpData.statusMessage, 'Sucesso!');
         }
