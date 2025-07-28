@@ -1,6 +1,4 @@
-// A constante PROXY_URL agora é lida do arquivo config.js,
-// que é carregado antes deste no index.html.
-
+// A constante PROXY_URL é lida do arquivo config.js
 document.addEventListener('DOMContentLoaded', () => {
     // Listeners da página principal
     document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
@@ -87,25 +85,22 @@ async function fetchAndShowDetails(sequencia) {
     const detailsContent = document.getElementById('details-content');
 
     loading.classList.remove('hidden');
-    detailsContent.innerHTML = ''; // Limpa conteúdo antigo
+    detailsContent.innerHTML = '';
 
     let bearerToken = null;
     try {
-        // Login
         const loginResponse = await fetch(`${PROXY_URL}/login`, { method: 'POST' });
         if (!loginResponse.ok) throw new Error('Falha na autenticação.');
         const loginData = await loginResponse.json();
         bearerToken = loginData.bearerToken;
         if (!bearerToken) throw new Error('Não foi possível obter o Bearer Token.');
 
-        // Monta a query específica
         const sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = 1 AND ENDE.SEQEND = ${sequencia}`;
         const requestBody = {
             "serviceName": "DbExplorerSP.executeQuery",
             "requestBody": { "sql": sql, "params": {} }
         };
 
-        // Faz a consulta
         const queryResponse = await fetch(`${PROXY_URL}/query`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -117,14 +112,14 @@ async function fetchAndShowDetails(sequencia) {
         if (queryData.status === "1" && queryData.responseBody.rows.length > 0) {
             const itemDetails = queryData.responseBody.rows[0];
             populateDetails(itemDetails);
-            showDetailsPage(); // Mostra a página de detalhes
+            showDetailsPage();
         } else {
             throw new Error('Produto não encontrado ou erro na consulta.');
         }
 
     } catch (error) {
         alert('Erro ao buscar detalhes: ' + error.message);
-        showMainPage(); // Volta para a página principal em caso de erro
+        showMainPage();
     } finally {
         if (bearerToken) {
             await logoutSankhya(bearerToken);
@@ -137,41 +132,44 @@ function populateDetails(details) {
     const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval] = details;
     const detailsContent = document.getElementById('details-content');
 
+    // --- ESTRUTURA HTML SIMPLIFICADA PARA OS DETALHES ---
     detailsContent.innerHTML = `
-        <div class="detail-product-header">
-            <div class="product-code">Cód. Prod.: ${codprod}</div>
+        <div class="detail-hero">
             <h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3>
+            <div class="product-code">Cód. Prod.: ${codprod}</div>
         </div>
-        <div class="details-grid">
-            <div class="detail-item">
-                <div class="label">Rua</div>
-                <div class="value">${rua}</div>
-            </div>
-            <div class="detail-item">
-                <div class="label">Prédio</div>
-                <div class="value">${predio}</div>
-            </div>
-            <div class="detail-item">
-                <div class="label">Sequência</div>
-                <div class="value">${sequencia}</div>
-            </div>
-            <div class="detail-item">
-                <div class="label">Apto</div>
-                <div class="value">${apto}</div>
-            </div>
-        </div>
-        <div class="detail-footer">
-            <div class="detail-item">
-                <div class="label">Marca</div>
-                <div class="value">${marca || 'N/A'}</div>
-            </div>
-            <div class="detail-item" style="text-align: right;">
-                <div class="label">Validade</div>
-                <div class="value">${formatarData(datval)}</div>
+
+        <div class="details-section">
+            <h4 class="details-section-title">Localização</h4>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="label">Rua</div>
+                    <div class="value">${rua}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="label">Prédio</div>
+                    <div class="value">${predio}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="label">Sequência</div>
+                    <div class="value">${sequencia}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="label">Apto</div>
+                    <div class="value">${apto}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="label">Marca</div>
+                    <div class="value">${marca || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="label">Validade</div>
+                    <div class="value">${formatarData(datval)}</div>
+                </div>
             </div>
         </div>
     `;
-    feather.replace(); // Re-ativa os ícones
+    feather.replace();
 }
 
 function renderizarCards(rows) {

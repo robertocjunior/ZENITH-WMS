@@ -14,18 +14,19 @@
     padding: 0;
 }
 
-body {
+html, body {
+    height: 100%;
+    overflow: hidden; /* Impede a rolagem do body */
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     background-color: var(--background-color);
     color: var(--text-color);
-    overflow: hidden; /* Impede a rolagem do body */
 }
 
 /* --- ESTILOS DAS PÁGINAS --- */
 .page {
     display: none;
     flex-direction: column;
-    height: 100vh;
+    height: 100%; /* Ocupa 100% da altura do body */
 }
 .page.active {
     display: flex;
@@ -36,11 +37,8 @@ body {
 .app-header {
     background-color: var(--primary-color);
     padding: 15px 20px;
-    position: sticky;
-    top: 0;
-    z-index: 1000;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    flex-shrink: 0;
+    flex-shrink: 0; /* Impede que o header encolha */
 }
 
 .search-bar {
@@ -79,7 +77,7 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 20px;
     overflow-y: auto;
-    flex: 1;
+    flex: 1; /* Faz esta área crescer e ocupar o espaço disponível */
 }
 
 .result-card {
@@ -103,7 +101,7 @@ body {
 .card-footer .product-code { background-color: #e9ecef; padding: 3px 8px; border-radius: 4px; font-family: 'Courier New', Courier, monospace; }
 .card-footer .product-validity { font-weight: 600; color: var(--primary-color); }
 
-/* --- TELA DE DETALHES (DESIGN MELHORADO) --- */
+/* --- TELA DE DETALHES (DESIGN RESPONSIVO) --- */
 .details-header {
     display: flex;
     align-items: center;
@@ -118,11 +116,10 @@ body {
 .details-content {
     padding: 20px;
     background-color: var(--background-color);
-    flex-grow: 1;
-    overflow-y: auto;
+    flex-grow: 1; /* Faz o conteúdo ocupar o espaço entre o header e os botões */
+    overflow-y: auto; /* Apenas esta área terá rolagem */
 }
 
-/* Novo: Seção principal com informações do produto */
 .detail-hero {
     background-color: var(--card-background);
     padding: 25px;
@@ -134,7 +131,6 @@ body {
 .detail-hero .product-desc { font-size: 22px; font-weight: 600; color: var(--text-color); margin-bottom: 10px; }
 .detail-hero .product-code { display: inline-block; background-color: #e9ecef; padding: 5px 10px; border-radius: 6px; font-family: 'Courier New', Courier, monospace; font-size: 14px; }
 
-/* Novo: Título para seções de detalhes */
 .details-section-title {
     font-size: 14px;
     font-weight: 600;
@@ -146,7 +142,7 @@ body {
 
 .details-grid { 
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr; /* 1 coluna por padrão (mobile) */
     gap: 15px;
     margin-bottom: 25px;
 }
@@ -163,9 +159,10 @@ body {
     display: flex;
     gap: 15px;
     padding: 20px;
-    background-color: var(--background-color);
-    border-top: 1px solid var(--border-color);
-    flex-shrink: 0;
+    background-color: var(--card-background); /* Fundo branco para destacar */
+    /* Sombra para dar a impressão de que está "flutuando" */
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+    flex-shrink: 0; /* Impede que a barra de botões encolha */
 }
 .btn-action { flex: 1; padding: 18px; font-size: 16px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; color: white; text-align: center; }
 .btn-baixar { background-color: #28a745; }
@@ -186,3 +183,24 @@ body {
 .spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: var(--primary-color); animation: spin 1s ease infinite; margin: 0 auto 10px auto; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .hidden { display: none !important; }
+
+/* --- MEDIA QUERY PARA TELAS MAIORES (PC) --- */
+@media (min-width: 768px) {
+    .details-grid { 
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .details-content {
+        max-width: 800px;
+        margin: 0 auto;
+        width: 100%;
+    }
+
+    .action-buttons {
+        max-width: 840px; /* 800px do conteúdo + 40px do padding */
+        margin: 0 auto;
+        background-color: var(--background-color);
+        box-shadow: none;
+        border-top: none;
+    }
+}
