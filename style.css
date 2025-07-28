@@ -1,5 +1,5 @@
 :root {
-    --primary-color: #00529B; /* Azul Sankhya */
+    --primary-color: #00529B;
     --secondary-color: #00A3E0;
     --background-color: #f0f2f5;
     --card-background: #ffffff;
@@ -14,31 +14,28 @@
     padding: 0;
 }
 
-body {
+html, body {
+    height: 100%;
+    width: 100%;
+    overflow-x: hidden;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     background-color: var(--background-color);
     color: var(--text-color);
-    overflow: hidden; /* Impede a rolagem do body */
 }
 
-/* --- ESTILOS DAS PÁGINAS --- */
 .page {
     display: none;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
 }
 .page.active {
     display: flex;
 }
 
-
-/* --- TELA PRINCIPAL --- */
+/* TELA PRINCIPAL */
 .app-header {
     background-color: var(--primary-color);
     padding: 15px 20px;
-    position: sticky;
-    top: 0;
-    z-index: 1000;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     flex-shrink: 0;
 }
@@ -47,6 +44,7 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: nowrap;
 }
 
 .input-wrapper {
@@ -56,10 +54,23 @@ body {
     background-color: var(--card-background);
     border-radius: 8px;
     padding: 5px 15px;
+    min-width: 0;
 }
 
-.input-wrapper i { color: var(--text-light); margin-right: 10px; }
-.input-wrapper input { width: 100%; border: none; outline: none; font-size: 16px; padding: 10px 0; background-color: transparent; }
+.input-wrapper i {
+    color: var(--text-light);
+    margin-right: 10px;
+}
+
+.input-wrapper input {
+    width: 100%;
+    max-width: 100%;
+    border: none;
+    outline: none;
+    font-size: 16px;
+    padding: 10px 0;
+    background-color: transparent;
+}
 
 .search-bar button {
     background-color: var(--secondary-color);
@@ -69,17 +80,32 @@ body {
     padding: 15px 20px;
     font-size: 16px;
     cursor: pointer;
-    transition: background-color 0.2s;
-    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* Responsividade para mobile: quebra o input e botão em linha */
+@media (max-width: 500px) {
+    .search-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .search-bar button {
+        width: 100%;
+    }
 }
 
 .results-container {
     padding: 20px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 20px;
+    justify-content: flex-start;
+    align-content: flex-start;
     overflow-y: auto;
     flex: 1;
+    width: 100%;
+    max-width: 100%;
 }
 
 .result-card {
@@ -91,19 +117,41 @@ body {
     display: flex;
     flex-direction: column;
     gap: 15px;
-    transition: transform 0.2s, box-shadow 0.2s;
     cursor: pointer;
+    word-break: break-word;
 }
-.result-card:hover { transform: translateY(-5px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.card-header, .card-footer { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: var(--text-light); }
-.card-header span { font-weight: 500; color: var(--text-color); }
-.card-body { text-align: center; }
-.card-body .product-desc { font-size: 18px; font-weight: 600; margin-bottom: 5px; }
-.card-body .product-brand { font-size: 16px; color: var(--text-light); }
-.card-footer .product-code { background-color: #e9ecef; padding: 3px 8px; border-radius: 4px; font-family: 'Courier New', Courier, monospace; }
-.card-footer .product-validity { font-weight: 600; color: var(--primary-color); }
 
-/* --- TELA DE DETALHES (DESIGN RESPONSIVO) --- */
+.card-header,
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    color: var(--text-light);
+}
+
+.card-header span {
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.card-body .product-desc {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.card-footer .product-code {
+    background-color: #e9ecef;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.card-footer .product-validity {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+/* TELA DE DETALHES */
 .details-header {
     display: flex;
     align-items: center;
@@ -112,12 +160,21 @@ body {
     color: white;
     flex-shrink: 0;
 }
-#btn-voltar { background: none; border: none; color: white; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; margin-right: 15px; padding: 5px; }
-#details-title { font-size: 18px; font-weight: 500; }
+
+#btn-voltar {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 15px;
+}
 
 .details-content {
     padding: 20px;
-    background-color: var(--background-color);
     flex-grow: 1;
     overflow-y: auto;
 }
@@ -127,82 +184,194 @@ body {
     padding: 25px;
     text-align: center;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     margin-bottom: 20px;
 }
-.detail-hero .product-desc { font-size: 22px; font-weight: 600; color: var(--text-color); margin-bottom: 10px; }
-.detail-hero .product-code { display: inline-block; background-color: #e9ecef; padding: 5px 10px; border-radius: 6px; font-family: 'Courier New', Courier, monospace; font-size: 14px; }
+
+.detail-hero .product-desc {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
 
 .details-section-title {
     font-size: 14px;
-    font-weight: 600;
-    color: var(--text-light);
     text-transform: uppercase;
+    color: var(--text-light);
     margin-bottom: 10px;
-    padding-left: 5px;
 }
 
-/* Por padrão (mobile), o grid tem 1 coluna */
-.details-grid { 
+.details-grid {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 15px;
     margin-bottom: 25px;
 }
-.detail-item { 
+
+@media (max-width: 768px) {
+    .details-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.detail-item {
     background-color: var(--card-background);
     padding: 15px;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    word-break: break-word;
 }
-.detail-item .label { font-size: 14px; color: var(--text-light); margin-bottom: 5px; }
-.detail-item .value { font-size: 18px; font-weight: 500; }
+
+.detail-item .label {
+    font-size: 14px;
+    color: var(--text-light);
+    margin-bottom: 5px;
+}
+
+.detail-item .value {
+    font-size: 18px;
+    font-weight: 500;
+}
 
 .action-buttons {
     display: flex;
+    flex-wrap: wrap;
     gap: 15px;
     padding: 20px;
-    background-color: var(--background-color);
-    border-top: 1px solid var(--border-color);
+    background-color: var(--card-background);
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
     flex-shrink: 0;
 }
-.btn-action { flex: 1; padding: 18px; font-size: 16px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; color: white; text-align: center; }
-.btn-baixar { background-color: #28a745; }
-.btn-transferir { background-color: #007bff; }
 
-/* --- INDICADORES DE ESTADO --- */
-.loading-indicator, .empty-state {
+.btn-action {
+    flex: 1;
+    padding: 18px;
+    font-size: 16px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: white;
+    max-width: 100%;
+}
+
+.btn-baixar {
+    background-color: #28a745;
+}
+
+.btn-transferir {
+    background-color: #007bff;
+}
+
+/* MODAL */
+.modal-overlay {
     position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    padding: 10px;
+    overflow-x: hidden;
+}
+
+.modal-content {
+    background-color: white;
+    padding: 25px;
+    border-radius: 8px;
+    width: min(90%, 400px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    word-break: break-word;
+}
+
+.modal-content h3 {
+    margin-bottom: 10px;
+}
+.modal-content p {
+    margin-bottom: 20px;
+}
+.modal-input-group {
+    margin-bottom: 20px;
+}
+.modal-input-group label {
+    display: block;
+    margin-bottom: 5px;
+}
+.modal-input-group input {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: 1px solid var(--border-color);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+.btn-modal {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+.btn-cancel {
+    background-color: #f0f2f5;
+}
+.btn-confirm {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+/* INDICADORES DE ESTADO */
+.loading-indicator {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+}
+
+.empty-state {
+    position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     text-align: center;
     color: var(--text-light);
+    word-break: break-word;
 }
-.empty-state i { width: 60px; height: 60px; color: #bdc3c7; margin-bottom: 20px; }
-.empty-state p { font-size: 18px; font-weight: 500; }
-.empty-state span { font-size: 14px; }
-.spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: var(--primary-color); animation: spin 1s ease infinite; margin: 0 auto 10px auto; }
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-.hidden { display: none !important; }
 
-/* --- MEDIA QUERY PARA TELAS MAIORES (PC) --- */
-@media (min-width: 768px) {
-    /* Em telas maiores, o grid passa a ter 2 colunas */
-    .details-grid { 
-        grid-template-columns: 1fr 1fr;
-    }
+.empty-state i {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 20px;
+}
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border-left-color: var(--primary-color);
+    animation: spin 1s ease infinite;
+    margin-bottom: 10px;
+}
 
-    /* Centraliza e limita a largura do conteúdo para melhor leitura */
-    .details-content {
-        max-width: 800px;
-        margin: 0 auto;
-        width: 100%;
+@keyframes spin {
+    100% {
+        transform: rotate(360deg);
     }
+}
 
-    /* Faz os botões de ação acompanharem a largura do conteúdo */
-    .action-buttons {
-        max-width: 840px; /* 800px do conteúdo + 40px do padding */
-        margin: 0 auto;
-    }
+.hidden {
+    display: none !important;
 }

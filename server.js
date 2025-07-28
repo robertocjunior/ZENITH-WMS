@@ -4,12 +4,17 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
 const SANKHYA_API_URL = process.env.SANKHYA_API_URL;
+
+// ======================================================
+// ROTAS DA API
+// ======================================================
 
 // Rota de login
 app.post('/login', async (req, res) => {
@@ -31,13 +36,13 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// Rota de consulta
-app.post('/query', async (req, res) => {
-    const { bearerToken, requestBody } = req.body;
-    console.log('Recebida requisição de consulta...');
+// Rota genérica para chamadas à API do Sankhya
+app.post('/api', async (req, res) => {
+    const { bearerToken, serviceName, requestBody } = req.body;
+    console.log(`Recebida requisição de consulta para o serviço: ${serviceName}`);
     try {
-        const queryUrl = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json`;
-        const response = await axios.post(queryUrl, requestBody, {
+        const queryUrl = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
+        const response = await axios.post(queryUrl, { requestBody }, {
             headers: { 'Authorization': `Bearer ${bearerToken}` }
         });
         console.log('Consulta no Sankhya bem-sucedida.');
@@ -72,10 +77,26 @@ app.post('/logout', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
 
-// --- MUDANÇA PRINCIPAL AQUI ---
-// O '0.0.0.0' faz o servidor aceitar conexões de outros dispositivos na rede.
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Proxy para Sankhya rodando na porta http://192.168.2.57:${PORT}`);
+// ======================================================
+// SERVIR OS ARQUIVOS DO FRONTEND
+// ======================================================
+app.use(express.static(path.join(__dirname, '')));
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+
+// ======================================================
+// INICIAR O SERVIDOR
+// ======================================================
+const PORT = process.env.PORT || 3000;
+const HOST = '0.0.0.0';
+
+app.listen(PORT, HOST, () => {
+    console.log(`\n✅ Servidor completo (Proxy + Frontend) rodando!`);
+    console.log(`   - Para acessar no seu PC, use: http://localhost:${PORT}`);
+    console.log(`   - Para acessar no celular (na mesma rede), use o IP do seu PC.`);
+    console.log(`\n👉 Não é mais necessário usar o "Live Server".\n`);
 });

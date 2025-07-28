@@ -19,15 +19,8 @@
                 <button id="btn-consultar">Buscar</button>
             </div>
         </header>
-
         <main id="results-container" class="results-container"></main>
-
-        <div id="loading" class="loading-indicator hidden">
-            <div class="spinner"></div>
-            <p>Carregando...</p>
-        </div>
-
-        <div id="empty-state" class="empty-state">
+        <div id="empty-state" class="empty-state hidden">
             <i data-feather="package"></i>
             <p>Nenhum resultado para exibir</p>
             <span>Digite uma sequência para começar</span>
@@ -39,21 +32,47 @@
             <button id="btn-voltar"><i data-feather="arrow-left"></i> Voltar</button>
             <h2 id="details-title">Detalhes do Endereço</h2>
         </header>
-        <div id="details-content" class="details-content">
-            </div>
+        <div id="details-content" class="details-content"></div>
         <div class="action-buttons">
             <button class="btn-action btn-baixar">Baixar</button>
             <button class="btn-action btn-transferir">Transferir</button>
         </div>
     </div>
 
+    <div id="baixa-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Dar Baixa no Produto</h3>
+            <p>Disponível: <strong id="modal-qtd-disponivel"></strong></p>
+            <div class="modal-input-group">
+                <label for="modal-qtd-baixa">Quantidade a baixar:</label>
+                <input type="number" id="modal-qtd-baixa" placeholder="0" min="1" step="1">
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cancelar-baixa" class="btn-modal btn-cancel">Cancelar</button>
+                <button id="btn-confirmar-baixa" class="btn-modal btn-confirm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading" class="loading-indicator hidden">
+        <div class="spinner"></div>
+        <p>Carregando...</p>
+    </div>
+
+    <div id="confirm-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 id="modal-confirm-title">Aviso</h3>
+            <p id="modal-confirm-message"></p>
+            <div class="modal-actions">
+                <button id="btn-close-confirm" class="btn-modal btn-confirm">OK</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-      // Ativa os ícones do Feather
       feather.replace();
     </script>
-    
     <script src="config.js"></script>
-    
     <script src="app.js"></script>
 </body>
 </html>
