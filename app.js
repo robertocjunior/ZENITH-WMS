@@ -45,31 +45,77 @@ function openConfirmModal(message, title = 'Aviso') {
 function closeConfirmModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
 function openBaixaModal() {
     if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
-    
     const maxQtd = currentItemDetails.quantidade;
     const qtdInput = document.getElementById('modal-qtd-baixa');
     qtdInput.value = '';
     qtdInput.max = maxQtd;
-    
     document.getElementById('modal-qtd-disponivel').textContent = currentItemDetails.qtdCompleta;
-    
     document.getElementById('baixa-modal').classList.remove('hidden');
 }
 function closeBaixaModal() { document.getElementById('baixa-modal').classList.add('hidden'); }
 function openTransferModal() {
     if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
-
     const maxQtd = currentItemDetails.quantidade;
     const qtdInput = document.getElementById('modal-qtd-transfer');
     qtdInput.value = '';
     qtdInput.max = maxQtd;
-
     document.getElementById('modal-qtd-disponivel-transfer').textContent = currentItemDetails.qtdCompleta;
-    
     document.getElementById('modal-enddes-transfer').value = '';
     document.getElementById('transfer-modal').classList.remove('hidden');
 }
 function closeTransferModal() { document.getElementById('transfer-modal').classList.add('hidden'); }
+
+// Funções para o Modal de Picking
+async function openPickingModal() {
+    if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
+
+    const selectPicking = document.getElementById('modal-seqend-picking');
+    selectPicking.innerHTML = '<option value="">Buscando locais...</option>';
+    selectPicking.disabled = true;
+
+    document.getElementById('modal-qtd-disponivel-picking').textContent = currentItemDetails.qtdCompleta;
+    document.getElementById('modal-qtd-picking').value = '';
+    document.getElementById('modal-qtd-picking').max = currentItemDetails.quantidade;
+    document.getElementById('picking-modal').classList.remove('hidden');
+
+    const success = await performSankhyaOperation(async (bearerToken) => {
+        const { codarm, codprod, sequencia } = currentItemDetails;
+        const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${codarm} AND ENDE.CODPROD = ${codprod} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sequencia} ORDER BY ENDE.SEQEND`;
+        const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { sql } };
+
+        const response = await fetch(`${PROXY_URL}/api`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bearerToken, ...apiRequestBody })
+        });
+        const data = await response.json();
+        if (data.status !== '1') throw new Error("Não foi possível carregar os locais de picking.");
+
+        const locations = data.responseBody.rows;
+        selectPicking.innerHTML = '';
+
+        if (locations.length === 0) {
+            selectPicking.innerHTML = '<option value="">Nenhum local de picking encontrado</option>';
+            return;
+        }
+
+        selectPicking.innerHTML = '<option value="">Selecione um destino</option>';
+        locations.forEach(location => {
+            const [seqEnd, descrProd] = location;
+            const option = document.createElement('option');
+            option.value = seqEnd;
+            option.textContent = `${seqEnd} - ${descrProd}`;
+            selectPicking.appendChild(option);
+        });
+        selectPicking.disabled = false;
+    });
+
+    if (!success) {
+        closePickingModal();
+    }
+}
+function closePickingModal() { document.getElementById('picking-modal').classList.add('hidden'); }
+
 const loading = document.getElementById('loading');
 const emptyState = document.getElementById('empty-state');
 function showLoading(show) { loading.classList.toggle('hidden', !show); }
@@ -287,71 +333,36 @@ async function handleTransfer() {
 
     closeTransferModal();
     const success = await performSankhyaOperation(async (bearerToken) => {
-        // ETAPA 1: Criar o cabeçalho
         const hoje = new Date().toLocaleDateString('pt-BR');
         const cabecalhoBody = { serviceName: "DatasetSP.save", requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] } };
         const cabecalhoRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...cabecalhoBody }) });
         const cabecalhoData = await cabecalhoRes.json();
-        if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API ao criar cabeçalho.');
-       
+        if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API.');
         const seqBai = cabecalhoData.responseBody.result[0][0];
-
-        // ETAPA 2: Verificar o conteúdo do endereço de destino
         const sqlCheck = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = ${enderecoDestino} AND CODARM = ${armazemDestino}`;
         const checkBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { sql: sqlCheck } };
         const checkRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...checkBody }) });
         const checkData = await checkRes.json();
         if (checkData.status !== '1') throw new Error("Falha ao verificar o endereço de destino.");
-        
         const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
-
-        // ETAPA 3: Montar a lista de registros com a ORDEM CORRETA
         const records = [];
-
-        // Verifica se o destino está ocupado pelo mesmo produto (caso de consolidação)
         if (destinationItem && destinationItem[0] === currentItemDetails.codprod) {
             const [destCodProd, destQtd] = destinationItem;
-
-            // --- ORDEM CORRIGIDA ---
-            // 1. PRIMEIRO, o registro de BAIXA do destino para consolidação
             records.push({
-                entityName: "AD_IBXEND",
-                fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
+                entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
                 values: { "1": seqBai, "2": armazemDestino, "3": enderecoDestino, "4": destQtd.toString() }
             });
-
-            // 2. SEGUNDO, o registro de TRANSFERÊNCIA da origem
-            records.push({
-                entityName: "AD_IBXEND",
-                fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
-                values: { "1": seqBai, "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
-            });
-        } else {
-            // Caso contrário (destino vazio ou com produto diferente), apenas a transferência normal
-            records.push({
-                entityName: "AD_IBXEND",
-                fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
-                values: { "1": seqBai, "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
-            });
         }
-        
-        // ETAPA 4: Enviar todos os registros de uma vez
+        records.push({
+            entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
+            values: { "1": seqBai, "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
+        });
         for (const record of records) {
-            const itemBody = {
-                serviceName: "DatasetSP.save",
-                requestBody: {
-                    entityName: record.entityName,
-                    standAlone: false,
-                    fields: record.fields,
-                    records: [{ values: record.values }]
-                }
-            };
+            const itemBody = { serviceName: "DatasetSP.save", requestBody: { entityName: record.entityName, standAlone: false, fields: record.fields, records: [{ values: record.values }] } };
             const itemRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...itemBody }) });
             const itemData = await itemRes.json();
-            if (itemData.status !== "1") throw new Error(itemData.statusMessage || `Falha ao criar registro para ${record.entityName}`);
+            if (itemData.status !== "1") throw new Error(itemData.statusMessage || `Falha ao criar registro`);
         }
-        
-        // ETAPA 5: Executar a procedure final
         const stpBody = { serviceName: "ActionButtonsSP.executeSTP", requestBody: { stpCall: { actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND", rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } } } };
         const stpRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...stpBody }) });
         const stpData = await stpRes.json();
@@ -364,6 +375,62 @@ async function handleTransfer() {
     }
 }
 
+async function handlePicking() {
+    const quantidade = parseInt(document.getElementById('modal-qtd-picking').value, 10);
+    const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
+    const enderecoDestino = document.getElementById('modal-seqend-picking').value;
+    const armazemDestino = currentItemDetails.codarm;
+
+    if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) return openConfirmModal("Por favor, insira uma quantidade válida.");
+    if (!enderecoDestino) return openConfirmModal("Por favor, selecione um endereço de destino.");
+
+    closePickingModal();
+    const success = await performSankhyaOperation(async (bearerToken) => {
+        const hoje = new Date().toLocaleDateString('pt-BR');
+        const cabecalhoBody = { serviceName: "DatasetSP.save", requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] } };
+        const cabecalhoRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...cabecalhoBody }) });
+        const cabecalhoData = await cabecalhoRes.json();
+        if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API.');
+        
+        const seqBai = cabecalhoData.responseBody.result[0][0];
+        const sqlCheck = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = ${enderecoDestino} AND CODARM = ${armazemDestino}`;
+        const checkBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { sql: sqlCheck } };
+        const checkRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...checkBody }) });
+        const checkData = await checkRes.json();
+        if (checkData.status !== '1') throw new Error("Falha ao verificar o endereço de destino.");
+        const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
+        const records = [];
+        if (destinationItem && destinationItem[0] === currentItemDetails.codprod) {
+            const [destCodProd, destQtd] = destinationItem;
+            records.push({
+                entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
+                values: { "1": seqBai, "2": armazemDestino.toString(), "3": enderecoDestino, "4": destQtd.toString() }
+            });
+        }
+        
+        records.push({
+            entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
+            values: { "1": seqBai, "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino.toString(), "5": enderecoDestino, "6": quantidade.toString() }
+        });
+        
+        for (const record of records) {
+            const itemBody = { serviceName: "DatasetSP.save", requestBody: { entityName: record.entityName, standAlone: false, fields: record.fields, records: [{ values: record.values }] } };
+            const itemRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...itemBody }) });
+            const itemData = await itemRes.json();
+            if (itemData.status !== "1") throw new Error(itemData.statusMessage || `Falha ao criar registro`);
+        }
+        
+        const stpBody = { serviceName: "ActionButtonsSP.executeSTP", requestBody: { stpCall: { actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND", rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } } } };
+        const stpRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...stpBody }) });
+        const stpData = await stpRes.json();
+        if (stpData.status !== "1" && stpData.status !== "2") throw new Error(stpData.statusMessage);
+        if (stpData.statusMessage) openConfirmModal(stpData.statusMessage, 'Sucesso!');
+    });
+    if (success) {
+        showMainPage();
+        handleConsulta();
+    }
+}
 
 // --- Funções de Renderização e Inicialização ---
 function renderizarCards(rows) {
@@ -439,10 +506,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-voltar').addEventListener('click', showMainPage);
     document.querySelector('.btn-baixar').addEventListener('click', openBaixaModal);
     document.querySelector('.btn-transferir').addEventListener('click', openTransferModal);
+    document.querySelector('.btn-picking').addEventListener('click', openPickingModal);
     document.getElementById('btn-cancelar-baixa').addEventListener('click', closeBaixaModal);
     document.getElementById('btn-confirmar-baixa').addEventListener('click', handleBaixa);
     document.getElementById('btn-cancelar-transfer').addEventListener('click', closeTransferModal);
     document.getElementById('btn-confirmar-transfer').addEventListener('click', handleTransfer);
+    document.getElementById('btn-cancelar-picking').addEventListener('click', closePickingModal);
+    document.getElementById('btn-confirmar-picking').addEventListener('click', handlePicking);
     document.getElementById('btn-close-confirm').addEventListener('click', closeConfirmModal);
 
     fetchAndPopulateWarehouses();

@@ -6,7 +6,6 @@
     --text-color: #333333;
     --text-light: #777777;
     --border-color: #e0e0e0;
-    /* NOVA variável de cor para área de picking */
     --picking-background-color: #fffbe6;
     --picking-border-color: #ffe58f;
 }
@@ -126,18 +125,29 @@ html, body {
 .card-header, .card-footer {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: baseline; /* MODIFICADO: Alinha pela base do texto */
     font-size: 14px;
     color: var(--text-light);
-    gap: 10px; /* MODIFICADO AQUI */
+    gap: 10px;
 }
 
 .card-header span { font-weight: 500; color: var(--text-color); }
+
+/* NOVO: Estilos para destacar a Sequência */
+.card-header p:first-child {
+    color: var(--primary-color);
+    font-weight: 500;
+}
+.card-header p:first-child span {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+
 .card-body .product-desc { font-size: 18px; font-weight: 600; }
 .card-footer .product-code { background-color: #e9ecef; padding: 3px 8px; border-radius: 4px; }
 .card-footer .product-validity { font-weight: 600; color: var(--primary-color); }
 
-/* NOVO: Estilo para área de picking */
 .result-card.picking-area {
     background-color: var(--picking-background-color);
     border-color: var(--picking-border-color);
@@ -147,10 +157,9 @@ html, body {
     border: 1px solid var(--picking-border-color);
 }
 .result-card.picking-area .card-footer .product-validity {
-    color: #c09b00; /* Um tom de dourado/amarelo para combinar */
+    color: #c09b00;
 }
 
-/* NOVO: Estilo para a quantidade no card */
 .product-quantity {
     text-align: center;
     font-weight: 500;
@@ -159,7 +168,6 @@ html, body {
 .product-quantity strong {
     font-weight: 600;
 }
-
 
 /* TELA DE DETALHES */
 .details-header {
@@ -203,6 +211,7 @@ html, body {
 .btn-action { flex: 1; padding: 18px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; color: white; }
 .btn-baixar { background-color: #28a745; }
 .btn-transferir { background-color: #007bff; }
+.btn-picking { background-color: #fd7e14; }
 
 /* MODAIS */
 .modal-overlay {
@@ -243,7 +252,6 @@ html, body {
 .btn-modal { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
 .btn-cancel { background-color: #f0f2f5; }
 .btn-confirm { background-color: var(--primary-color); color: white; }
-
 
 /* INDICADORES DE ESTADO */
 .loading-indicator {

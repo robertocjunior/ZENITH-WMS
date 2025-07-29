@@ -20,7 +20,7 @@
             <div class="search-bar">
                 <div class="input-wrapper">
                     <i data-feather="search"></i>
-                    <input type="text" id="filtro-sequencia" placeholder="Buscar por Sequência..." autocomplete="off">
+                    <input type="text" id="filtro-sequencia" placeholder="Buscar..." autocomplete="off">
                 </div>
                 <button id="btn-consultar">Buscar</button>
             </div>
@@ -42,6 +42,7 @@
         <div class="action-buttons">
             <button class="btn-action btn-baixar">Baixar</button>
             <button class="btn-action btn-transferir">Transferir</button>
+            <button class="btn-action btn-picking">Picking</button>
         </div>
     </div>
 
@@ -83,6 +84,30 @@
             <div class="modal-actions">
                 <button id="btn-cancelar-transfer" class="btn-modal btn-cancel">Cancelar</button>
                 <button id="btn-confirmar-transfer" class="btn-modal btn-confirm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="picking-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Mover para Picking</h3>
+            <p>Disponível: <strong id="modal-qtd-disponivel-picking"></strong></p>
+            
+            <div class="modal-input-group">
+                <label for="modal-qtd-picking">Quantidade a mover:</label>
+                <input type="number" id="modal-qtd-picking" placeholder="0" min="1" step="1" autocomplete="off">
+            </div>
+
+            <div class="modal-input-group">
+                <label for="modal-seqend-picking">Destino de Picking:</label>
+                <select id="modal-seqend-picking">
+                    <option value="">Carregando locais...</option>
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button id="btn-cancelar-picking" class="btn-modal btn-cancel">Cancelar</button>
+                <button id="btn-confirmar-picking" class="btn-modal btn-confirm">Confirmar</button>
             </div>
         </div>
     </div>
