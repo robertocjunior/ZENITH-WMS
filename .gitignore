@@ -146,4 +146,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-teste.txt
+# Ignorar arquivos de chaves de segurança
+chave_privada.pem
+chave_publica.pem

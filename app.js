@@ -45,27 +45,32 @@ function openConfirmModal(message, title = 'Aviso') {
 function closeConfirmModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
 function openBaixaModal() {
     if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
+    
     const maxQtd = currentItemDetails.quantidade;
     const qtdInput = document.getElementById('modal-qtd-baixa');
-    qtdInput.value = '';
+    qtdInput.value = maxQtd; // MODIFICADO: Preenche com a quantidade total
     qtdInput.max = maxQtd;
+    
     document.getElementById('modal-qtd-disponivel').textContent = currentItemDetails.qtdCompleta;
+    
     document.getElementById('baixa-modal').classList.remove('hidden');
 }
 function closeBaixaModal() { document.getElementById('baixa-modal').classList.add('hidden'); }
 function openTransferModal() {
     if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
+
     const maxQtd = currentItemDetails.quantidade;
     const qtdInput = document.getElementById('modal-qtd-transfer');
-    qtdInput.value = '';
+    qtdInput.value = maxQtd; // MODIFICADO: Preenche com a quantidade total
     qtdInput.max = maxQtd;
+
     document.getElementById('modal-qtd-disponivel-transfer').textContent = currentItemDetails.qtdCompleta;
+    
     document.getElementById('modal-enddes-transfer').value = '';
     document.getElementById('transfer-modal').classList.remove('hidden');
 }
 function closeTransferModal() { document.getElementById('transfer-modal').classList.add('hidden'); }
 
-// Funções para o Modal de Picking
 async function openPickingModal() {
     if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
 
@@ -74,8 +79,9 @@ async function openPickingModal() {
     selectPicking.disabled = true;
 
     document.getElementById('modal-qtd-disponivel-picking').textContent = currentItemDetails.qtdCompleta;
-    document.getElementById('modal-qtd-picking').value = '';
-    document.getElementById('modal-qtd-picking').max = currentItemDetails.quantidade;
+    const qtdInput = document.getElementById('modal-qtd-picking');
+    qtdInput.value = currentItemDetails.quantidade; // MODIFICADO: Preenche com a quantidade total
+    qtdInput.max = currentItemDetails.quantidade;
     document.getElementById('picking-modal').classList.remove('hidden');
 
     const success = await performSankhyaOperation(async (bearerToken) => {
