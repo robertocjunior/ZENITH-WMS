@@ -1,10 +1,15 @@
 let currentItemDetails = null;
 
 /**
- * Processa a string de erro HTML do Sankhya para extrair uma mensagem amigável.
- * @param {string} rawMessage - A mensagem de erro bruta contendo HTML.
- * @returns {string} - Uma string HTML formatada e limpa para exibição.
+ * NOVO: Remove acentos de uma string.
+ * @param {string} texto A string para processar.
+ * @returns {string} A string sem acentos.
  */
+function removerAcentos(texto) {
+    if (!texto) return '';
+    return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function parseSankhyaError(rawMessage) {
     if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.includes('<')) {
         return rawMessage || 'Ocorreu um erro desconhecido.';
@@ -148,12 +153,39 @@ async function handleConsulta() {
     }
 
     await performSankhyaOperation(async (bearerToken) => {
-        const sequencia = document.getElementById('filtro-sequencia').value;
-        // MODIFICADO: Adicionado ENDE.ENDPIC à consulta
+        const filtroInput = document.getElementById('filtro-sequencia').value.trim();
         let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
-        if (sequencia) {
-            sqlFinal += ` AND ENDE.SEQEND LIKE '${sequencia}%'`;
+
+        if (filtroInput) {
+            if (/^\d+$/.test(filtroInput)) {
+                sqlFinal += ` AND ENDE.SEQEND LIKE '${filtroInput}%'`;
+            } else {
+                const palavrasChave = removerAcentos(filtroInput).split(' ').filter(p => p.length > 0);
+                
+                const condicoes = palavrasChave.map(palavra => {
+                    const palavraUpper = palavra.toUpperCase();
+                    
+                    // Constrói a cláusula para ignorar acentos no banco de dados (específico para Oracle)
+                    const cleanDescrprod = "TRANSLATE(UPPER(PRO.DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
+                    const cleanMarca = "TRANSLATE(UPPER(PRO.MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
+                    
+                    return `(${cleanDescrprod} LIKE '%${palavraUpper}%' OR ${cleanMarca} LIKE '%${palavraUpper}%')`;
+                });
+
+                if (condicoes.length > 0) {
+                    sqlFinal += ` AND ${condicoes.join(' AND ')}`;
+                }
+            }
         }
+
+        let orderByClause = '';
+        if (filtroInput && /^\d+$/.test(filtroInput)) {
+            orderByClause = ' ORDER BY ENDE.SEQEND ASC';
+        } else {
+            orderByClause = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
+        }
+        sqlFinal += orderByClause;
+        
         const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { "sql": sqlFinal } };
         const queryResponse = await fetch(`${PROXY_URL}/api`, {
             method: 'POST',
@@ -170,7 +202,6 @@ async function handleConsulta() {
 async function fetchAndShowDetails(sequencia) {
     const codArm = document.getElementById('armazem-select').value;
     const success = await performSankhyaOperation(async (bearerToken) => {
-        // MODIFICADO: Adicionado ENDE.ENDPIC à consulta
         const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
         const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { "sql": sql } };
         const queryResponse = await fetch(`${PROXY_URL}/api`, {
@@ -285,9 +316,8 @@ async function handleTransfer() {
 function renderizarCards(rows) {
     const resultsContainer = document.getElementById('results-container');
     if (!rows || rows.length === 0) {
-        // Correção para exibir a mensagem correta no empty state
         const emptyMessage = document.querySelector('#empty-state span');
-        emptyMessage.textContent = "Nenhum resultado encontrado para este armazém.";
+        emptyMessage.textContent = "Nenhum resultado encontrado para esta busca.";
         return emptyState.classList.remove('hidden');
     }
     
@@ -300,8 +330,6 @@ function renderizarCards(rows) {
             card.classList.add('picking-area');
         }
 
-        // --- MUDANÇA APLICADA AQUI ---
-        // Cria a string de exibição combinando descrição e marca
         let displayDesc = descrprod || 'Sem descrição';
         if (marca) {
             displayDesc += ` - ${marca}`;
@@ -318,12 +346,10 @@ function renderizarCards(rows) {
 }
 
 function populateDetails(details) {
-    // MODIFICADO: Captura e armazena o 'endpic'
     const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic] = details;
     currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic };
     
     const detailsContent = document.getElementById('details-content');
-    // MODIFICADO: Adiciona a classe dinamicamente ao 'detail-hero'
     const pickingClass = endpic === 'S' ? 'picking-area' : '';
 
     detailsContent.innerHTML = `
