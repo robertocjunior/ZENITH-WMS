@@ -1,7 +1,7 @@
 let currentItemDetails = null;
 
 /**
- * NOVO: Remove acentos de uma string.
+ * Remove acentos de uma string.
  * @param {string} texto A string para processar.
  * @returns {string} A string sem acentos.
  */
@@ -154,37 +154,28 @@ async function handleConsulta() {
 
     await performSankhyaOperation(async (bearerToken) => {
         const filtroInput = document.getElementById('filtro-sequencia').value.trim();
-        let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
+        
+        // MODIFICADO: Seleciona a quantidade numérica (QTDPRO) e também a quantidade formatada (QTD_COMPLETA)
+        let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
 
         if (filtroInput) {
             if (/^\d+$/.test(filtroInput)) {
-                sqlFinal += ` AND ENDE.SEQEND LIKE '${filtroInput}%'`;
+                sqlFinal += ` AND (ENDE.SEQEND LIKE '${filtroInput}%' OR ENDE.CODPROD = ${filtroInput})`;
             } else {
                 const palavrasChave = removerAcentos(filtroInput).split(' ').filter(p => p.length > 0);
-                
                 const condicoes = palavrasChave.map(palavra => {
                     const palavraUpper = palavra.toUpperCase();
-                    
-                    // Constrói a cláusula para ignorar acentos no banco de dados (específico para Oracle)
                     const cleanDescrprod = "TRANSLATE(UPPER(PRO.DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
                     const cleanMarca = "TRANSLATE(UPPER(PRO.MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
-                    
                     return `(${cleanDescrprod} LIKE '%${palavraUpper}%' OR ${cleanMarca} LIKE '%${palavraUpper}%')`;
                 });
-
                 if (condicoes.length > 0) {
                     sqlFinal += ` AND ${condicoes.join(' AND ')}`;
                 }
             }
         }
-
-        let orderByClause = '';
-        if (filtroInput && /^\d+$/.test(filtroInput)) {
-            orderByClause = ' ORDER BY ENDE.SEQEND ASC';
-        } else {
-            orderByClause = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
-        }
-        sqlFinal += orderByClause;
+        
+        sqlFinal += ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
         
         const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { "sql": sqlFinal } };
         const queryResponse = await fetch(`${PROXY_URL}/api`, {
@@ -202,7 +193,8 @@ async function handleConsulta() {
 async function fetchAndShowDetails(sequencia) {
     const codArm = document.getElementById('armazem-select').value;
     const success = await performSankhyaOperation(async (bearerToken) => {
-        const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
+        // MODIFICADO: Seleciona a quantidade numérica (QTDPRO) e também a quantidade formatada (QTD_COMPLETA)
+        const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
         const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { "sql": sql } };
         const queryResponse = await fetch(`${PROXY_URL}/api`, {
             method: 'POST',
@@ -322,7 +314,8 @@ function renderizarCards(rows) {
     }
     
     rows.forEach(row => {
-        const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic] = row;
+        // MODIFICADO: Captura o novo campo 'qtdCompleta'
+        const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic, qtdCompleta] = row;
         const card = document.createElement('div');
         card.className = 'result-card';
 
@@ -346,7 +339,9 @@ function renderizarCards(rows) {
 }
 
 function populateDetails(details) {
-    const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic] = details;
+    // MODIFICADO: Captura o novo campo 'qtdCompleta'
+    const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta] = details;
+    // MODIFICADO: Armazena o valor numérico da quantidade para validações
     currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic };
     
     const detailsContent = document.getElementById('details-content');
@@ -357,7 +352,7 @@ function populateDetails(details) {
         <div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid">
             <div class="detail-item"><div class="label">Marca</div><div class="value">${marca || 'N/A'}</div></div>
             <div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div>
-            <div class="detail-item"><div class="label">Quantidade</div><div class="value">${quantidade || 0}</div></div>
+            <div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div>
         </div></div>
         <div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid">
             <div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div>
