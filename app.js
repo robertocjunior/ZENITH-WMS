@@ -164,9 +164,7 @@ async function handleConsulta() {
         let orderByClause = '';
 
         if (filtroInput) {
-            // Se a busca for numérica (SEQEND ou CODPROD)
             if (/^\d+$/.test(filtroInput)) {
-                // MODIFICADO: A cláusula WHERE agora busca a SEQEND, o CODPROD e todos os itens com o mesmo CODPROD da SEQEND pesquisada.
                 sqlFinal += `
                     AND (
                         ENDE.SEQEND LIKE '${filtroInput}%' 
@@ -175,7 +173,6 @@ async function handleConsulta() {
                     )
                 `;
                 
-                // MODIFICADO: A ordenação agora coloca a SEQEND exata no topo, e depois ordena o resto por picking e validade.
                 orderByClause = `
                     ORDER BY
                         CASE WHEN ENDE.SEQEND = ${filtroInput} THEN 0 ELSE 1 END,
@@ -184,7 +181,6 @@ async function handleConsulta() {
                 `;
 
             } else {
-                // Se a busca for por texto
                 const palavrasChave = removerAcentos(filtroInput).split(' ').filter(p => p.length > 0);
                 const condicoes = palavrasChave.map(palavra => {
                     const palavraUpper = palavra.toUpperCase();
@@ -291,6 +287,7 @@ async function handleTransfer() {
 
     closeTransferModal();
     const success = await performSankhyaOperation(async (bearerToken) => {
+        // ETAPA 1: Criar o cabeçalho
         const hoje = new Date().toLocaleDateString('pt-BR');
         const cabecalhoBody = { serviceName: "DatasetSP.save", requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] } };
         const cabecalhoRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...cabecalhoBody }) });
@@ -298,27 +295,63 @@ async function handleTransfer() {
         if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API ao criar cabeçalho.');
        
         const seqBai = cabecalhoData.responseBody.result[0][0];
-        const itemBody = {
-            serviceName: "DatasetSP.save",
-            requestBody: {
-                entityName: "AD_IBXEND", standAlone: false,
-                fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
-                records: [{
-                    values: {
-                        "1": seqBai.toString(),
-                        "2": currentItemDetails.codarm.toString(),
-                        "3": currentItemDetails.sequencia.toString(),
-                        "4": armazemDestino,
-                        "5": enderecoDestino,
-                        "6": quantidade.toString()
-                    }
-                }]
-            }
-        };
-        const itemRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...itemBody }) });
-        const itemData = await itemRes.json();
-        if (itemData.status !== "1") throw new Error(itemData.statusMessage);
+
+        // ETAPA 2: Verificar o conteúdo do endereço de destino
+        const sqlCheck = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = ${enderecoDestino} AND CODARM = ${armazemDestino}`;
+        const checkBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { sql: sqlCheck } };
+        const checkRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...checkBody }) });
+        const checkData = await checkRes.json();
+        if (checkData.status !== '1') throw new Error("Falha ao verificar o endereço de destino.");
         
+        const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
+
+        // ETAPA 3: Montar a lista de registros com a ORDEM CORRETA
+        const records = [];
+
+        // Verifica se o destino está ocupado pelo mesmo produto (caso de consolidação)
+        if (destinationItem && destinationItem[0] === currentItemDetails.codprod) {
+            const [destCodProd, destQtd] = destinationItem;
+
+            // --- ORDEM CORRIGIDA ---
+            // 1. PRIMEIRO, o registro de BAIXA do destino para consolidação
+            records.push({
+                entityName: "AD_IBXEND",
+                fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
+                values: { "1": seqBai, "2": armazemDestino, "3": enderecoDestino, "4": destQtd.toString() }
+            });
+
+            // 2. SEGUNDO, o registro de TRANSFERÊNCIA da origem
+            records.push({
+                entityName: "AD_IBXEND",
+                fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
+                values: { "1": seqBai, "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
+            });
+        } else {
+            // Caso contrário (destino vazio ou com produto diferente), apenas a transferência normal
+            records.push({
+                entityName: "AD_IBXEND",
+                fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
+                values: { "1": seqBai, "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
+            });
+        }
+        
+        // ETAPA 4: Enviar todos os registros de uma vez
+        for (const record of records) {
+            const itemBody = {
+                serviceName: "DatasetSP.save",
+                requestBody: {
+                    entityName: record.entityName,
+                    standAlone: false,
+                    fields: record.fields,
+                    records: [{ values: record.values }]
+                }
+            };
+            const itemRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...itemBody }) });
+            const itemData = await itemRes.json();
+            if (itemData.status !== "1") throw new Error(itemData.statusMessage || `Falha ao criar registro para ${record.entityName}`);
+        }
+        
+        // ETAPA 5: Executar a procedure final
         const stpBody = { serviceName: "ActionButtonsSP.executeSTP", requestBody: { stpCall: { actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND", rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } } } };
         const stpRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...stpBody }) });
         const stpData = await stpRes.json();
@@ -330,6 +363,7 @@ async function handleTransfer() {
         handleConsulta();
     }
 }
+
 
 // --- Funções de Renderização e Inicialização ---
 function renderizarCards(rows) {
