@@ -45,21 +45,27 @@ function openConfirmModal(message, title = 'Aviso') {
 function closeConfirmModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
 function openBaixaModal() {
     if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
+    
     const maxQtd = currentItemDetails.quantidade;
-    document.getElementById('modal-qtd-disponivel').textContent = maxQtd;
     const qtdInput = document.getElementById('modal-qtd-baixa');
     qtdInput.value = '';
     qtdInput.max = maxQtd;
+    
+    document.getElementById('modal-qtd-disponivel').textContent = currentItemDetails.qtdCompleta;
+    
     document.getElementById('baixa-modal').classList.remove('hidden');
 }
 function closeBaixaModal() { document.getElementById('baixa-modal').classList.add('hidden'); }
 function openTransferModal() {
     if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
+
     const maxQtd = currentItemDetails.quantidade;
-    document.getElementById('modal-qtd-disponivel-transfer').textContent = maxQtd;
     const qtdInput = document.getElementById('modal-qtd-transfer');
     qtdInput.value = '';
     qtdInput.max = maxQtd;
+
+    document.getElementById('modal-qtd-disponivel-transfer').textContent = currentItemDetails.qtdCompleta;
+    
     document.getElementById('modal-enddes-transfer').value = '';
     document.getElementById('transfer-modal').classList.remove('hidden');
 }
@@ -155,7 +161,6 @@ async function handleConsulta() {
     await performSankhyaOperation(async (bearerToken) => {
         const filtroInput = document.getElementById('filtro-sequencia').value.trim();
         
-        // MODIFICADO: Seleciona a quantidade numérica (QTDPRO) e também a quantidade formatada (QTD_COMPLETA)
         let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
 
         if (filtroInput) {
@@ -193,7 +198,6 @@ async function handleConsulta() {
 async function fetchAndShowDetails(sequencia) {
     const codArm = document.getElementById('armazem-select').value;
     const success = await performSankhyaOperation(async (bearerToken) => {
-        // MODIFICADO: Seleciona a quantidade numérica (QTDPRO) e também a quantidade formatada (QTD_COMPLETA)
         const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
         const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { "sql": sql } };
         const queryResponse = await fetch(`${PROXY_URL}/api`, {
@@ -314,7 +318,6 @@ function renderizarCards(rows) {
     }
     
     rows.forEach(row => {
-        // MODIFICADO: Captura o novo campo 'qtdCompleta'
         const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic, qtdCompleta] = row;
         const card = document.createElement('div');
         card.className = 'result-card';
@@ -328,10 +331,15 @@ function renderizarCards(rows) {
             displayDesc += ` - ${marca}`;
         }
 
+        // MODIFICADO AQUI
         card.innerHTML = `
             <div class="card-header"><p>Seq: <span>${sequencia}</span></p><p>Rua: <span>${rua}</span></p><p>Prédio: <span>${predio}</span></p></div>
             <div class="card-body"><p class="product-desc">${displayDesc}</p></div>
-            <div class="card-footer"><span class="product-code">Cód: ${codprod}</span><span class="product-validity">Val: ${formatarData(datval)}</span></div>
+            <div class="card-footer">
+                <span class="product-code">Cód: ${codprod}</span>
+                <span class="product-quantity">Qtd: <strong>${qtdCompleta}</strong></span>
+                <span class="product-validity">Val: ${formatarData(datval)}</span>
+            </div>
         `;
         card.addEventListener('click', () => fetchAndShowDetails(sequencia));
         resultsContainer.appendChild(card);
@@ -339,10 +347,8 @@ function renderizarCards(rows) {
 }
 
 function populateDetails(details) {
-    // MODIFICADO: Captura o novo campo 'qtdCompleta'
     const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta] = details;
-    // MODIFICADO: Armazena o valor numérico da quantidade para validações
-    currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic };
+    currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta };
     
     const detailsContent = document.getElementById('details-content');
     const pickingClass = endpic === 'S' ? 'picking-area' : '';

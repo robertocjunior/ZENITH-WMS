@@ -129,6 +129,7 @@ html, body {
     align-items: center;
     font-size: 14px;
     color: var(--text-light);
+    gap: 10px; /* MODIFICADO AQUI */
 }
 
 .card-header span { font-weight: 500; color: var(--text-color); }
@@ -147,6 +148,16 @@ html, body {
 }
 .result-card.picking-area .card-footer .product-validity {
     color: #c09b00; /* Um tom de dourado/amarelo para combinar */
+}
+
+/* NOVO: Estilo para a quantidade no card */
+.product-quantity {
+    text-align: center;
+    font-weight: 500;
+    color: var(--text-color);
+}
+.product-quantity strong {
+    font-weight: 600;
 }
 
 
