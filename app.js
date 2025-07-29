@@ -160,13 +160,31 @@ async function handleConsulta() {
 
     await performSankhyaOperation(async (bearerToken) => {
         const filtroInput = document.getElementById('filtro-sequencia').value.trim();
-        
         let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
+        let orderByClause = '';
 
         if (filtroInput) {
+            // Se a busca for numérica (SEQEND ou CODPROD)
             if (/^\d+$/.test(filtroInput)) {
-                sqlFinal += ` AND (ENDE.SEQEND LIKE '${filtroInput}%' OR ENDE.CODPROD = ${filtroInput})`;
+                // MODIFICADO: A cláusula WHERE agora busca a SEQEND, o CODPROD e todos os itens com o mesmo CODPROD da SEQEND pesquisada.
+                sqlFinal += `
+                    AND (
+                        ENDE.SEQEND LIKE '${filtroInput}%' 
+                        OR ENDE.CODPROD = ${filtroInput}
+                        OR ENDE.CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroInput} AND CODARM = ${codArm} AND ROWNUM = 1)
+                    )
+                `;
+                
+                // MODIFICADO: A ordenação agora coloca a SEQEND exata no topo, e depois ordena o resto por picking e validade.
+                orderByClause = `
+                    ORDER BY
+                        CASE WHEN ENDE.SEQEND = ${filtroInput} THEN 0 ELSE 1 END,
+                        ENDE.ENDPIC DESC,
+                        ENDE.DATVAL ASC
+                `;
+
             } else {
+                // Se a busca for por texto
                 const palavrasChave = removerAcentos(filtroInput).split(' ').filter(p => p.length > 0);
                 const condicoes = palavrasChave.map(palavra => {
                     const palavraUpper = palavra.toUpperCase();
@@ -174,13 +192,17 @@ async function handleConsulta() {
                     const cleanMarca = "TRANSLATE(UPPER(PRO.MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
                     return `(${cleanDescrprod} LIKE '%${palavraUpper}%' OR ${cleanMarca} LIKE '%${palavraUpper}%')`;
                 });
+
                 if (condicoes.length > 0) {
                     sqlFinal += ` AND ${condicoes.join(' AND ')}`;
                 }
+                orderByClause = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
             }
+        } else {
+            orderByClause = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
         }
         
-        sqlFinal += ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
+        sqlFinal += orderByClause;
         
         const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { "sql": sqlFinal } };
         const queryResponse = await fetch(`${PROXY_URL}/api`, {
@@ -194,6 +216,7 @@ async function handleConsulta() {
         renderizarCards(queryData.responseBody.rows);
     });
 }
+
 
 async function fetchAndShowDetails(sequencia) {
     const codArm = document.getElementById('armazem-select').value;
@@ -331,7 +354,6 @@ function renderizarCards(rows) {
             displayDesc += ` - ${marca}`;
         }
 
-        // MODIFICADO AQUI
         card.innerHTML = `
             <div class="card-header"><p>Seq: <span>${sequencia}</span></p><p>Rua: <span>${rua}</span></p><p>Prédio: <span>${predio}</span></p></div>
             <div class="card-body"><p class="product-desc">${displayDesc}</p></div>
