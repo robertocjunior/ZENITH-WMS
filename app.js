@@ -1,65 +1,45 @@
 let currentItemDetails = null;
 
 /**
- * REVISADO: Processa a string de erro HTML do Sankhya para extrair uma mensagem amigável.
- * @param {string} rawMessage - A mensagem de erro bruta, que pode conter HTML.
+ * Processa a string de erro HTML do Sankhya para extrair uma mensagem amigável.
+ * @param {string} rawMessage - A mensagem de erro bruta contendo HTML.
  * @returns {string} - Uma string HTML formatada e limpa para exibição.
  */
 function parseSankhyaError(rawMessage) {
     if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.includes('<')) {
         return rawMessage || 'Ocorreu um erro desconhecido.';
     }
-
     try {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = rawMessage;
         const textContent = tempDiv.textContent || tempDiv.innerText;
-
-        // Expressão regular mais robusta para capturar o conteúdo
         const motivoMatch = textContent.match(/Motivo:\s*([\s\S]+?)(?=Solução:|Informações para o Implantador|$)/);
         const solucaoMatch = textContent.match(/Solução:\s*([\s\S]+?)(?=Informações para o Implantador|$)/);
-
         const motivo = motivoMatch ? motivoMatch[1].trim() : '';
         const solucao = solucaoMatch ? solucaoMatch[1].trim() : '';
-        
         if (motivo || solucao) {
             let formattedMessage = '';
-            if (motivo) {
-                formattedMessage += `<p style="margin-bottom:10px;"><strong>Motivo:</strong> ${motivo}</p>`;
-            }
-            if (solucao) {
-                formattedMessage += `<p><strong>Solução:</strong> ${solucao}</p>`;
-            }
+            if (motivo) formattedMessage += `<p style="margin-bottom:10px;"><strong>Motivo:</strong> ${motivo}</p>`;
+            if (solucao) formattedMessage += `<p><strong>Solução:</strong> ${solucao}</p>`;
             return formattedMessage;
         }
-
-        // Fallback: se não encontrar os padrões, limpa o texto o melhor possível
         const cleanedText = textContent.replace(/ORA-\d+.*|Regra Personalizada:/g, '').trim();
         return cleanedText || "Ocorreu um erro na operação.";
-
     } catch (e) {
-        // Em caso de erro no parsing, apenas remove as tags e retorna.
         return rawMessage.replace(/<[^>]*>/g, ' ');
     }
 }
 
-
-// --- Funções dos Modais ---
+// --- Funções dos Modais e UI ---
 function openConfirmModal(message, title = 'Aviso') {
     document.getElementById('modal-confirm-title').textContent = title;
     document.getElementById('modal-confirm-message').innerHTML = message;
     document.getElementById('confirm-modal').classList.remove('hidden');
 }
 
-function closeConfirmModal() {
-    document.getElementById('confirm-modal').classList.add('hidden');
-}
-
+function closeConfirmModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
 function openBaixaModal() {
-    if (!currentItemDetails) {
-        openConfirmModal("Erro: Nenhum item selecionado.");
-        return;
-    }
+    if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
     const maxQtd = currentItemDetails.quantidade;
     document.getElementById('modal-qtd-disponivel').textContent = maxQtd;
     const qtdInput = document.getElementById('modal-qtd-baixa');
@@ -67,16 +47,9 @@ function openBaixaModal() {
     qtdInput.max = maxQtd;
     document.getElementById('baixa-modal').classList.remove('hidden');
 }
-
-function closeBaixaModal() {
-    document.getElementById('baixa-modal').classList.add('hidden');
-}
-
+function closeBaixaModal() { document.getElementById('baixa-modal').classList.add('hidden'); }
 function openTransferModal() {
-    if (!currentItemDetails) {
-        openConfirmModal("Erro: Nenhum item selecionado.");
-        return;
-    }
+    if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
     const maxQtd = currentItemDetails.quantidade;
     document.getElementById('modal-qtd-disponivel-transfer').textContent = maxQtd;
     const qtdInput = document.getElementById('modal-qtd-transfer');
@@ -85,40 +58,14 @@ function openTransferModal() {
     document.getElementById('modal-enddes-transfer').value = '';
     document.getElementById('transfer-modal').classList.remove('hidden');
 }
-
-function closeTransferModal() {
-    document.getElementById('transfer-modal').classList.add('hidden');
-}
-
-
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
-    document.getElementById('filtro-sequencia').addEventListener('keyup', (event) => {
-        if (event.key === 'Enter') handleConsulta();
-    });
-    document.getElementById('btn-voltar').addEventListener('click', showMainPage);
-    document.querySelector('.btn-baixar').addEventListener('click', openBaixaModal);
-    document.querySelector('.btn-transferir').addEventListener('click', openTransferModal);
-    document.getElementById('btn-cancelar-baixa').addEventListener('click', closeBaixaModal);
-    document.getElementById('btn-confirmar-baixa').addEventListener('click', handleBaixa);
-    document.getElementById('btn-cancelar-transfer').addEventListener('click', closeTransferModal);
-    document.getElementById('btn-confirmar-transfer').addEventListener('click', handleTransfer);
-    document.getElementById('btn-close-confirm').addEventListener('click', closeConfirmModal);
-});
-
-// --- CONTROLE DE UI ---
+function closeTransferModal() { document.getElementById('transfer-modal').classList.add('hidden'); }
 const loading = document.getElementById('loading');
 const emptyState = document.getElementById('empty-state');
-
-function showLoading(show) {
-    loading.classList.toggle('hidden', !show);
-}
-
+function showLoading(show) { loading.classList.toggle('hidden', !show); }
 function showMainPage() {
     document.getElementById('main-page').classList.add('active');
     document.getElementById('details-page').classList.remove('active');
 }
-
 function showDetailsPage() {
     document.getElementById('main-page').classList.remove('active');
     document.getElementById('details-page').classList.add('active');
@@ -134,11 +81,8 @@ async function performSankhyaOperation(operation) {
         const loginData = await loginResponse.json();
         bearerToken = loginData.bearerToken;
         if (!bearerToken) throw new Error('Não foi possível obter o Bearer Token.');
-
         await operation(bearerToken);
-
     } catch (error) {
-        // REVISADO: Chama a nova função para limpar a mensagem de erro antes de exibi-la
         const friendlyMessage = parseSankhyaError(error.message);
         openConfirmModal(friendlyMessage, 'Falha na Operação');
         return false;
@@ -157,21 +101,60 @@ async function performSankhyaOperation(operation) {
 }
 
 // --- FUNÇÕES PRINCIPAIS ---
+
+async function fetchAndPopulateWarehouses() {
+    const success = await performSankhyaOperation(async (bearerToken) => {
+        const sql = "SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM ORDER BY CODARM";
+        const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { sql } };
+        const response = await fetch(`${PROXY_URL}/api`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bearerToken, ...apiRequestBody })
+        });
+        const data = await response.json();
+        if (data.status !== '1') throw new Error("Não foi possível carregar a lista de armazéns.");
+        
+        const armazens = data.responseBody.rows;
+        const selectPrincipal = document.getElementById('armazem-select');
+        const selectModal = document.getElementById('modal-armdes-transfer');
+        
+        selectPrincipal.innerHTML = '<option value="">Selecione um Armazém</option>';
+        selectModal.innerHTML = '';
+
+        armazens.forEach(armazem => {
+            const [codArm, descArm] = armazem;
+            const option = document.createElement('option');
+            option.value = codArm;
+            option.textContent = descArm;
+            selectPrincipal.appendChild(option);
+            selectModal.appendChild(option.cloneNode(true));
+        });
+    });
+
+    if (!success) {
+        document.getElementById('armazem-select').innerHTML = '<option value="">Erro ao carregar</option>';
+    }
+}
+
 async function handleConsulta() {
     const resultsContainer = document.getElementById('results-container');
     resultsContainer.innerHTML = '';
     emptyState.classList.add('hidden');
 
+    const codArm = document.getElementById('armazem-select').value;
+    if (!codArm) {
+        openConfirmModal("Por favor, selecione um armazém para iniciar a busca.");
+        return;
+    }
+
     await performSankhyaOperation(async (bearerToken) => {
         const sequencia = document.getElementById('filtro-sequencia').value;
-        let sqlFinal = "SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = 1";
+        // MODIFICADO: Adicionado ENDE.ENDPIC à consulta
+        let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
         if (sequencia) {
             sqlFinal += ` AND ENDE.SEQEND LIKE '${sequencia}%'`;
         }
-        const apiRequestBody = {
-            serviceName: "DbExplorerSP.executeQuery",
-            requestBody: { "sql": sqlFinal }
-        };
+        const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { "sql": sqlFinal } };
         const queryResponse = await fetch(`${PROXY_URL}/api`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -185,12 +168,11 @@ async function handleConsulta() {
 }
 
 async function fetchAndShowDetails(sequencia) {
+    const codArm = document.getElementById('armazem-select').value;
     const success = await performSankhyaOperation(async (bearerToken) => {
-        const sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = 1 AND ENDE.SEQEND = ${sequencia}`;
-        const apiRequestBody = {
-            serviceName: "DbExplorerSP.executeQuery",
-            requestBody: { "sql": sql }
-        };
+        // MODIFICADO: Adicionado ENDE.ENDPIC à consulta
+        const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
+        const apiRequestBody = { serviceName: "DbExplorerSP.executeQuery", requestBody: { "sql": sql } };
         const queryResponse = await fetch(`${PROXY_URL}/api`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -205,83 +187,42 @@ async function fetchAndShowDetails(sequencia) {
             throw new Error('Produto não encontrado ou erro na consulta.');
         }
     });
-    if (!success) {
-        showMainPage();
-    }
+    if (!success) showMainPage();
 }
 
 async function handleBaixa() {
     const qtdBaixarInput = document.getElementById('modal-qtd-baixa');
     const qtdBaixar = parseInt(qtdBaixarInput.value, 10);
     const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
-
-    if (isNaN(qtdBaixar) || qtdBaixar <= 0 || qtdBaixar > qtdDisponivel) {
-        openConfirmModal("Por favor, insira uma quantidade válida.");
-        return;
-    }
+    if (isNaN(qtdBaixar) || qtdBaixar <= 0 || qtdBaixar > qtdDisponivel) return openConfirmModal("Por favor, insira uma quantidade válida.");
+    
     closeBaixaModal();
-
     const success = await performSankhyaOperation(async (bearerToken) => {
         const hoje = new Date().toLocaleDateString('pt-BR');
-        const cabecalhoBody = {
-            serviceName: "DatasetSP.save",
-            requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] }
-        };
-        const cabecalhoRes = await fetch(`${PROXY_URL}/api`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bearerToken, ...cabecalhoBody })
-        });
+        const cabecalhoBody = { serviceName: "DatasetSP.save", requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] } };
+        const cabecalhoRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...cabecalhoBody }) });
         const cabecalhoData = await cabecalhoRes.json();
-        if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) {
-            throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API ao criar cabeçalho.');
-        }
+        if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API ao criar cabeçalho.');
+        
         const seqBai = cabecalhoData.responseBody.result[0][0];
-
         const itemBody = {
             serviceName: "DatasetSP.save",
             requestBody: {
                 entityName: "AD_IBXEND",
                 fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
-                records: [{
-                    values: {
-                        "1": seqBai.toString(), "2": "1",
-                        "3": currentItemDetails.sequencia.toString(),
-                        "4": qtdBaixar.toString()
-                    }
-                }]
+                records: [{ values: { "1": seqBai.toString(), "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": qtdBaixar.toString() } }]
             }
         };
-        const itemRes = await fetch(`${PROXY_URL}/api`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bearerToken, ...itemBody })
-        });
+        const itemRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...itemBody }) });
         const itemData = await itemRes.json();
         if (itemData.status !== "1") throw new Error(itemData.statusMessage);
 
-        const stpBody = {
-            serviceName: "ActionButtonsSP.executeSTP",
-            requestBody: {
-                stpCall: {
-                    actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND",
-                    rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] }
-                }
-            }
-        };
-        const stpRes = await fetch(`${PROXY_URL}/api`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bearerToken, ...stpBody })
-        });
+        const stpBody = { serviceName: "ActionButtonsSP.executeSTP", requestBody: { stpCall: { actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND", rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } } } };
+        const stpRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...stpBody }) });
         const stpData = await stpRes.json();
         if (stpData.status !== "1" && stpData.status !== "2") throw new Error(stpData.statusMessage);
-        
-        if (stpData.statusMessage) {
-            openConfirmModal(stpData.statusMessage, 'Sucesso!');
-        }
+        if (stpData.statusMessage) openConfirmModal(stpData.statusMessage, 'Sucesso!');
     });
-
     if (success) {
         showMainPage();
         handleConsulta();
@@ -289,40 +230,24 @@ async function handleBaixa() {
 }
 
 async function handleTransfer() {
-    const qtdInput = document.getElementById('modal-qtd-transfer');
-    const endDesInput = document.getElementById('modal-enddes-transfer');
-    
-    const quantidade = parseInt(qtdInput.value, 10);
+    const quantidade = parseInt(document.getElementById('modal-qtd-transfer').value, 10);
     const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
-    const enderecoDestino = endDesInput.value.trim();
+    const enderecoDestino = document.getElementById('modal-enddes-transfer').value.trim();
+    const armazemDestino = document.getElementById('modal-armdes-transfer').value;
 
-    if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) {
-        openConfirmModal("Por favor, insira uma quantidade válida.");
-        return;
-    }
-    if (!enderecoDestino) {
-        openConfirmModal("Por favor, insira o endereço de destino.");
-        return;
-    }
+    if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) return openConfirmModal("Por favor, insira uma quantidade válida.");
+    if (!armazemDestino) return openConfirmModal("Por favor, selecione um armazém de destino.");
+    if (!enderecoDestino) return openConfirmModal("Por favor, insira o endereço de destino.");
+
     closeTransferModal();
-
     const success = await performSankhyaOperation(async (bearerToken) => {
         const hoje = new Date().toLocaleDateString('pt-BR');
-        const cabecalhoBody = {
-            serviceName: "DatasetSP.save",
-            requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] }
-        };
-        const cabecalhoRes = await fetch(`${PROXY_URL}/api`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bearerToken, ...cabecalhoBody })
-        });
+        const cabecalhoBody = { serviceName: "DatasetSP.save", requestBody: { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] } };
+        const cabecalhoRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...cabecalhoBody }) });
         const cabecalhoData = await cabecalhoRes.json();
-        if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) {
-            throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API ao criar cabeçalho.');
-        }
+        if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) throw new Error(cabecalhoData.statusMessage || 'Resposta inválida da API ao criar cabeçalho.');
+       
         const seqBai = cabecalhoData.responseBody.result[0][0];
-
         const itemBody = {
             serviceName: "DatasetSP.save",
             requestBody: {
@@ -330,64 +255,61 @@ async function handleTransfer() {
                 fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
                 records: [{
                     values: {
-                        "1": seqBai.toString(), "2": "1",
+                        "1": seqBai.toString(),
+                        "2": currentItemDetails.codarm.toString(),
                         "3": currentItemDetails.sequencia.toString(),
-                        "4": "1", "5": enderecoDestino, "6": quantidade.toString()
+                        "4": armazemDestino,
+                        "5": enderecoDestino,
+                        "6": quantidade.toString()
                     }
                 }]
             }
         };
-        const itemRes = await fetch(`${PROXY_URL}/api`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bearerToken, ...itemBody })
-        });
+        const itemRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...itemBody }) });
         const itemData = await itemRes.json();
         if (itemData.status !== "1") throw new Error(itemData.statusMessage);
-
-        const stpBody = {
-            serviceName: "ActionButtonsSP.executeSTP",
-            requestBody: {
-                stpCall: {
-                    actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND",
-                    rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] }
-                }
-            }
-        };
-        const stpRes = await fetch(`${PROXY_URL}/api`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bearerToken, ...stpBody })
-        });
+        
+        const stpBody = { serviceName: "ActionButtonsSP.executeSTP", requestBody: { stpCall: { actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND", rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } } } };
+        const stpRes = await fetch(`${PROXY_URL}/api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bearerToken, ...stpBody }) });
         const stpData = await stpRes.json();
         if (stpData.status !== "1" && stpData.status !== "2") throw new Error(stpData.statusMessage);
-        
-        if (stpData.statusMessage) {
-            openConfirmModal(stpData.statusMessage, 'Sucesso!');
-        }
+        if (stpData.statusMessage) openConfirmModal(stpData.statusMessage, 'Sucesso!');
     });
-
     if (success) {
         showMainPage();
         handleConsulta();
     }
 }
 
-
-// --- FUNÇÕES DE RENDERIZAÇÃO ---
+// --- Funções de Renderização e Inicialização ---
 function renderizarCards(rows) {
     const resultsContainer = document.getElementById('results-container');
     if (!rows || rows.length === 0) {
-        emptyState.classList.remove('hidden');
-        return;
+        // Correção para exibir a mensagem correta no empty state
+        const emptyMessage = document.querySelector('#empty-state span');
+        emptyMessage.textContent = "Nenhum resultado encontrado para este armazém.";
+        return emptyState.classList.remove('hidden');
     }
+    
     rows.forEach(row => {
-        const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval] = row;
+        const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic] = row;
         const card = document.createElement('div');
         card.className = 'result-card';
+
+        if (endpic === 'S') {
+            card.classList.add('picking-area');
+        }
+
+        // --- MUDANÇA APLICADA AQUI ---
+        // Cria a string de exibição combinando descrição e marca
+        let displayDesc = descrprod || 'Sem descrição';
+        if (marca) {
+            displayDesc += ` - ${marca}`;
+        }
+
         card.innerHTML = `
             <div class="card-header"><p>Seq: <span>${sequencia}</span></p><p>Rua: <span>${rua}</span></p><p>Prédio: <span>${predio}</span></p></div>
-            <div class="card-body"><p class="product-desc">${descrprod || 'Sem descrição'}</p></div>
+            <div class="card-body"><p class="product-desc">${displayDesc}</p></div>
             <div class="card-footer"><span class="product-code">Cód: ${codprod}</span><span class="product-validity">Val: ${formatarData(datval)}</span></div>
         `;
         card.addEventListener('click', () => fetchAndShowDetails(sequencia));
@@ -396,17 +318,23 @@ function renderizarCards(rows) {
 }
 
 function populateDetails(details) {
-    const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade] = details;
-    currentItemDetails = { sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade };
+    // MODIFICADO: Captura e armazena o 'endpic'
+    const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic] = details;
+    currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic };
+    
     const detailsContent = document.getElementById('details-content');
+    // MODIFICADO: Adiciona a classe dinamicamente ao 'detail-hero'
+    const pickingClass = endpic === 'S' ? 'picking-area' : '';
+
     detailsContent.innerHTML = `
-        <div class="detail-hero"><h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div>
+        <div class="detail-hero ${pickingClass}"><h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div>
         <div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid">
             <div class="detail-item"><div class="label">Marca</div><div class="value">${marca || 'N/A'}</div></div>
             <div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div>
             <div class="detail-item"><div class="label">Quantidade</div><div class="value">${quantidade || 0}</div></div>
         </div></div>
         <div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid">
+            <div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div>
             <div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div>
             <div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div>
             <div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div>
@@ -419,6 +347,20 @@ function populateDetails(details) {
 function formatarData(dataString) {
     if (!dataString || typeof dataString !== 'string') return '';
     const parteData = dataString.split(' ')[0];
-    if (parteData.length !== 8) return dataString;
-    return `${parteData.substring(0, 2)}/${parteData.substring(2, 4)}/${parteData.substring(4, 8)}`;
+    return parteData.length !== 8 ? dataString : `${parteData.substring(0, 2)}/${parteData.substring(2, 4)}/${parteData.substring(4, 8)}`;
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
+    document.getElementById('filtro-sequencia').addEventListener('keyup', (event) => { if (event.key === 'Enter') handleConsulta(); });
+    document.getElementById('btn-voltar').addEventListener('click', showMainPage);
+    document.querySelector('.btn-baixar').addEventListener('click', openBaixaModal);
+    document.querySelector('.btn-transferir').addEventListener('click', openTransferModal);
+    document.getElementById('btn-cancelar-baixa').addEventListener('click', closeBaixaModal);
+    document.getElementById('btn-confirmar-baixa').addEventListener('click', handleBaixa);
+    document.getElementById('btn-cancelar-transfer').addEventListener('click', closeTransferModal);
+    document.getElementById('btn-confirmar-transfer').addEventListener('click', handleTransfer);
+    document.getElementById('btn-close-confirm').addEventListener('click', closeConfirmModal);
+
+    fetchAndPopulateWarehouses();
+});
