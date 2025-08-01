@@ -17,8 +17,8 @@ const Session = {
 // ======================================================
 const InactivityTimer = {
     timeoutID: null,
-    //timeoutInMilliseconds: 3600 * 1000, // 1 hora (60 minutos * 60 segundos * 1000 ms)
-    timeoutInMilliseconds: 30 * 1000, // 30 segundos
+    timeoutInMilliseconds: 3600 * 1000, // 1 hora (60 minutos * 60 segundos * 1000 ms)
+    //timeoutInMilliseconds: 30 * 1000, // 30 segundos
 
     start: function() {
         this.clear(); // Limpa qualquer timer anterior
