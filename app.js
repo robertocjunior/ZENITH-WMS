@@ -13,6 +13,58 @@ const Session = {
 };
 
 // ======================================================
+// GERENCIAMENTO DE INATIVIDADE
+// ======================================================
+const InactivityTimer = {
+    timeoutID: null,
+    //timeoutInMilliseconds: 3600 * 1000, // 1 hora (60 minutos * 60 segundos * 1000 ms)
+    timeoutInMilliseconds: 30 * 1000, // 30 segundos
+
+    start: function() {
+        this.clear(); // Limpa qualquer timer anterior
+        this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds);
+        console.log(`Timer de inatividade iniciado (${this.timeoutInMilliseconds / 60000} minutos).`);
+    },
+
+    reset: function() {
+        this.start(); // Reinicia o timer
+    },
+
+    clear: function() {
+        if (this.timeoutID) {
+            clearTimeout(this.timeoutID);
+            console.log("Timer de inatividade limpo.");
+        }
+    },
+
+    forceLogout: function() {
+        console.log("Sessão expirada por inatividade.");
+        handleLogout(true); // Chama a função de logout com um parâmetro especial
+    }
+};
+
+const activityEvents = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
+let throttleTimeout = null;
+const throttledReset = () => {
+    if (throttleTimeout) return;
+    throttleTimeout = setTimeout(() => {
+        InactivityTimer.reset();
+        throttleTimeout = null;
+    }, 500); // Evita reiniciar o timer excessivamente
+};
+
+function setupActivityListeners() {
+    activityEvents.forEach(event => window.addEventListener(event, throttledReset));
+    console.log("Listeners de atividade configurados.");
+}
+
+function removeActivityListeners() {
+    activityEvents.forEach(event => window.removeEventListener(event, throttledReset));
+    console.log("Listeners de atividade removidos.");
+}
+
+
+// ======================================================
 // FUNÇÕES AUXILIARES
 // ======================================================
 function removerAcentos(texto) {
@@ -48,8 +100,6 @@ function parseSankhyaError(rawMessage) {
 // ======================================================
 // CONTROLE DE UI E MODAIS
 // ======================================================
-
-// CORRIGIDO: Função centralizada para trocar de tela
 function switchView(viewName) {
     const loginPage = document.getElementById('login-page');
     const appContainer = document.getElementById('app-container');
@@ -61,7 +111,6 @@ function switchView(viewName) {
         loginPage.classList.remove('hidden');
         appContainer.classList.add('hidden');
     } else {
-        // Mostra o container do app e esconde o login
         loginPage.classList.remove('active');
         loginPage.classList.add('hidden');
         appContainer.classList.remove('hidden');
@@ -168,7 +217,7 @@ async function authenticatedFetch(serviceName, requestBody) {
     });
     const data = await response.json();
     if (response.status === 401 || response.status === 403) {
-        handleLogout();
+        handleLogout(true);
         throw new Error(data.message || "Sessão expirada. Por favor, faça login novamente.");
     }
     if (!response.ok) {
@@ -219,6 +268,10 @@ async function handleLogin() {
         
         switchView('main');
         document.getElementById('user-info').textContent = `Usuário: ${data.username}`;
+        
+        setupActivityListeners();
+        InactivityTimer.start();
+        
         await fetchAndPopulateWarehouses();
         feather.replace();
 
@@ -230,7 +283,7 @@ async function handleLogin() {
     }
 }
 
-async function handleLogout() {
+async function handleLogout(fromInactivity = false) {
     const token = Session.getToken();
     if (token) {
         try {
@@ -242,7 +295,15 @@ async function handleLogout() {
     }
     Session.clearToken();
     Session.clearUsername();
+
+    InactivityTimer.clear();
+    removeActivityListeners();
+
     switchView('login');
+
+    if (fromInactivity) {
+        openConfirmModal("Sua sessão expirou por inatividade. Por favor, faça login novamente.", "Sessão Expirada");
+    }
 }
 
 async function fetchAndPopulateWarehouses() {
@@ -477,7 +538,7 @@ function formatarData(dataString) {
 document.addEventListener('DOMContentLoaded', () => {
     // Listeners de Login/Logout
     document.getElementById('btn-login').addEventListener('click', handleLogin);
-    document.getElementById('btn-logout').addEventListener('click', handleLogout);
+    document.getElementById('btn-logout').addEventListener('click', () => handleLogout(false));
     document.getElementById('login-password').addEventListener('keyup', (event) => { if (event.key === 'Enter') handleLogin(); });
 
     document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
@@ -498,6 +559,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (Session.getToken()) {
         switchView('main');
         document.getElementById('user-info').textContent = `Usuário: ${Session.getUsername()}`;
+        
+        setupActivityListeners();
+        InactivityTimer.start();
+        
         fetchAndPopulateWarehouses();
         feather.replace();
     } else {
