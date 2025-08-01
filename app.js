@@ -10,6 +10,9 @@ const Session = {
     getUsername: () => localStorage.getItem('username'),
     saveUsername: (username) => localStorage.setItem('username', username),
     clearUsername: () => localStorage.removeItem('username'),
+    getCodUsu: () => localStorage.getItem('codusu'),
+    saveCodUsu: (codusu) => localStorage.setItem('codusu', codusu),
+    clearCodUsu: () => localStorage.removeItem('codusu'),
 };
 
 // ======================================================
@@ -17,32 +20,15 @@ const Session = {
 // ======================================================
 const InactivityTimer = {
     timeoutID: null,
-    timeoutInMilliseconds: 3600 * 1000, // 1 hora (60 minutos * 60 segundos * 1000 ms)
-    //timeoutInMilliseconds: 30 * 1000, // 30 segundos
-
+    timeoutInMilliseconds: 3600 * 1000, // 1 hora
     start: function() {
-        this.clear(); // Limpa qualquer timer anterior
+        this.clear();
         this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds);
-        console.log(`Timer de inatividade iniciado (${this.timeoutInMilliseconds / 60000} minutos).`);
     },
-
-    reset: function() {
-        this.start(); // Reinicia o timer
-    },
-
-    clear: function() {
-        if (this.timeoutID) {
-            clearTimeout(this.timeoutID);
-            console.log("Timer de inatividade limpo.");
-        }
-    },
-
-    forceLogout: function() {
-        console.log("Sessão expirada por inatividade.");
-        handleLogout(true); // Chama a função de logout com um parâmetro especial
-    }
+    reset: function() { this.start(); },
+    clear: function() { if (this.timeoutID) clearTimeout(this.timeoutID); },
+    forceLogout: function() { handleLogout(true); }
 };
-
 const activityEvents = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
 let throttleTimeout = null;
 const throttledReset = () => {
@@ -50,28 +36,18 @@ const throttledReset = () => {
     throttleTimeout = setTimeout(() => {
         InactivityTimer.reset();
         throttleTimeout = null;
-    }, 500); // Evita reiniciar o timer excessivamente
+    }, 500);
 };
-
-function setupActivityListeners() {
-    activityEvents.forEach(event => window.addEventListener(event, throttledReset));
-    console.log("Listeners de atividade configurados.");
-}
-
-function removeActivityListeners() {
-    activityEvents.forEach(event => window.removeEventListener(event, throttledReset));
-    console.log("Listeners de atividade removidos.");
-}
-
+function setupActivityListeners() { activityEvents.forEach(event => window.addEventListener(event, throttledReset)); }
+function removeActivityListeners() { activityEvents.forEach(event => window.removeEventListener(event, throttledReset)); }
 
 // ======================================================
-// FUNÇÕES AUXILIARES
+// FUNÇÕES AUXILIARES E DE UI
 // ======================================================
 function removerAcentos(texto) {
     if (!texto) return '';
     return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
-
 function parseSankhyaError(rawMessage) {
     if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.includes('<')) {
         return rawMessage || 'Ocorreu um erro desconhecido.';
@@ -96,16 +72,11 @@ function parseSankhyaError(rawMessage) {
         return rawMessage.replace(/<[^>]*>/g, ' ');
     }
 }
-
-// ======================================================
-// CONTROLE DE UI E MODAIS
-// ======================================================
 function switchView(viewName) {
     const loginPage = document.getElementById('login-page');
     const appContainer = document.getElementById('app-container');
     const mainPage = document.getElementById('main-page');
     const detailsPage = document.getElementById('details-page');
-
     if (viewName === 'login') {
         loginPage.classList.add('active');
         loginPage.classList.remove('hidden');
@@ -114,7 +85,6 @@ function switchView(viewName) {
         loginPage.classList.remove('active');
         loginPage.classList.add('hidden');
         appContainer.classList.remove('hidden');
-
         if (viewName === 'main') {
             mainPage.classList.add('active');
             detailsPage.classList.remove('active');
@@ -124,7 +94,6 @@ function switchView(viewName) {
         }
     }
 }
-
 function openConfirmModal(message, title = 'Aviso') {
     document.getElementById('modal-confirm-title').textContent = title;
     document.getElementById('modal-confirm-message').innerHTML = parseSankhyaError(message);
@@ -168,9 +137,7 @@ async function openPickingModal() {
         const { codarm, codprod, sequencia } = currentItemDetails;
         const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${codarm} AND ENDE.CODPROD = ${codprod} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sequencia} ORDER BY ENDE.SEQEND`;
         const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
-
         if (data.status !== '1') throw new Error(data.statusMessage || "Não foi possível carregar os locais de picking.");
-
         const locations = data.responseBody.rows;
         selectPicking.innerHTML = '';
         if (locations.length === 0) {
@@ -194,7 +161,6 @@ async function openPickingModal() {
     }
 }
 function closePickingModal() { document.getElementById('picking-modal').classList.add('hidden'); }
-
 const loading = document.getElementById('loading');
 function showLoading(show) { loading.classList.toggle('hidden', !show); }
 
@@ -209,10 +175,7 @@ async function authenticatedFetch(serviceName, requestBody) {
     }
     const response = await fetch(`${PROXY_URL}/api`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ serviceName, requestBody })
     });
     const data = await response.json();
@@ -226,19 +189,6 @@ async function authenticatedFetch(serviceName, requestBody) {
     return data;
 }
 
-async function runOperation(operationFunc) {
-    showLoading(true);
-    try {
-        await operationFunc();
-        return true;
-    } catch (error) {
-        openConfirmModal(error.message, "Falha na Operação");
-        return false;
-    } finally {
-        showLoading(false);
-    }
-}
-
 // ======================================================
 // FUNÇÕES PRINCIPAIS
 // ======================================================
@@ -248,11 +198,8 @@ async function handleLogin() {
     const passwordInput = document.getElementById('login-password');
     const username = usernameInput.value.trim();
     const password = passwordInput.value.trim();
-
-    if (!username || !password) {
-        return openConfirmModal("Por favor, preencha o usuário e a senha.");
-    }
-
+    if (!username || !password) return openConfirmModal("Por favor, preencha o usuário e a senha.");
+    
     showLoading(true);
     try {
         const response = await fetch(`${PROXY_URL}/login`, {
@@ -262,20 +209,27 @@ async function handleLogin() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message);
-
         Session.saveToken(data.sessionToken);
         Session.saveUsername(data.username);
         
+        const sql = `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${username.toUpperCase()}'`;
+        const userData = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
+        if (userData.status !== '1' || userData.responseBody.rows.length === 0) {
+            throw new Error("Não foi possível encontrar o código de usuário (CODUSU).");
+        }
+        const codUsu = userData.responseBody.rows[0][0];
+        Session.saveCodUsu(codUsu);
+
         switchView('main');
-        document.getElementById('user-info').textContent = `Usuário: ${data.username}`;
-        
+        document.getElementById('user-info').textContent = `${codUsu} - ${username}`;
         setupActivityListeners();
         InactivityTimer.start();
-        
         await fetchAndPopulateWarehouses();
         feather.replace();
-
     } catch (error) {
+        Session.clearToken();
+        Session.clearUsername();
+        Session.clearCodUsu();
         openConfirmModal(error.message, "Falha no Login");
     } finally {
         showLoading(false);
@@ -295,19 +249,18 @@ async function handleLogout(fromInactivity = false) {
     }
     Session.clearToken();
     Session.clearUsername();
-
+    Session.clearCodUsu();
     InactivityTimer.clear();
     removeActivityListeners();
-
     switchView('login');
-
     if (fromInactivity) {
         openConfirmModal("Sua sessão expirou por inatividade. Por favor, faça login novamente.", "Sessão Expirada");
     }
 }
 
 async function fetchAndPopulateWarehouses() {
-    await runOperation(async () => {
+    showLoading(true);
+    try {
         const sql = "SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM ORDER BY CODARM";
         const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
         if (data.status !== '1') throw new Error(data.statusMessage);
@@ -315,10 +268,8 @@ async function fetchAndPopulateWarehouses() {
         const armazens = data.responseBody.rows;
         const selectPrincipal = document.getElementById('armazem-select');
         const selectModal = document.getElementById('modal-armdes-transfer');
-        
         selectPrincipal.innerHTML = '<option value="">Selecione um Armazém</option>';
         selectModal.innerHTML = '';
-
         armazens.forEach(armazem => {
             const [codArm, descArm] = armazem;
             const option = document.createElement('option');
@@ -327,22 +278,24 @@ async function fetchAndPopulateWarehouses() {
             selectPrincipal.appendChild(option);
             selectModal.appendChild(option.cloneNode(true));
         });
-    });
+    } catch (error) {
+        openConfirmModal(error.message, "Erro ao carregar Armazéns");
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function handleConsulta() {
-    const codArm = document.getElementById('armazem-select').value;
-    if (!codArm) return openConfirmModal("Por favor, selecione um armazém para iniciar a busca.");
-
-    await runOperation(async () => {
+    showLoading(true);
+    try {
+        const codArm = document.getElementById('armazem-select').value;
+        if (!codArm) throw new Error("Por favor, selecione um armazém para iniciar a busca.");
         const resultsContainer = document.getElementById('results-container');
         resultsContainer.innerHTML = '';
         document.getElementById('empty-state').classList.add('hidden');
-
         const filtroInput = document.getElementById('filtro-sequencia').value.trim();
         let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
         let orderByClause = '';
-
         if (filtroInput) {
             if (/^\d+$/.test(filtroInput)) {
                 sqlFinal += ` AND (ENDE.SEQEND LIKE '${filtroInput}%' OR ENDE.CODPROD = ${filtroInput} OR ENDE.CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroInput} AND CODARM = ${codArm} AND ROWNUM = 1))`;
@@ -361,45 +314,54 @@ async function handleConsulta() {
         } else {
             orderByClause = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
         }
-        
         sqlFinal += orderByClause;
-        
         const data = await authenticatedFetch("DbExplorerSP.executeQuery", { "sql": sqlFinal });
         if (data.status !== "1") throw new Error(data.statusMessage);
         renderizarCards(data.responseBody.rows);
-    });
+    } catch(error) {
+        openConfirmModal(error.message, "Erro na Consulta");
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function fetchAndShowDetails(sequencia) {
-    await runOperation(async () => {
+    showLoading(true);
+    try {
         const codArm = document.getElementById('armazem-select').value;
         const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
         const data = await authenticatedFetch("DbExplorerSP.executeQuery", { "sql": sql });
-
         if (data.status === "1" && data.responseBody.rows.length > 0) {
             populateDetails(data.responseBody.rows[0]);
             switchView('details');
         } else {
             throw new Error('Produto não encontrado ou erro na consulta.');
         }
-    });
+    } catch (error) {
+        openConfirmModal(error.message, "Erro");
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function doTransaction(records) {
     const hoje = new Date().toLocaleDateString('pt-BR');
-    const cabecalhoBody = { entityName: "AD_BXAEND", fields: ["SEQBAI", "DATGER"], records: [{ values: { "1": hoje } }] };
+    const codUsu = Session.getCodUsu();
+    if (!codUsu) throw new Error("Código do usuário não encontrado na sessão. Faça login novamente.");
+    const cabecalhoBody = { 
+        entityName: "AD_BXAEND", 
+        fields: ["SEQBAI", "DATGER", "USUGER"], 
+        records: [{ values: { "1": hoje, "2": codUsu } }] 
+    };
     const cabecalhoData = await authenticatedFetch("DatasetSP.save", cabecalhoBody);
     if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) throw new Error(cabecalhoData.statusMessage);
-    
     const seqBai = cabecalhoData.responseBody.result[0][0];
-
     for (const record of records) {
         record.values["1"] = seqBai;
         const itemBody = { entityName: record.entityName, standAlone: false, fields: record.fields, records: [{ values: record.values }] };
         const itemData = await authenticatedFetch("DatasetSP.save", itemBody);
         if (itemData.status !== "1") throw new Error(itemData.statusMessage);
     }
-    
     const stpBody = { stpCall: { actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND", rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } } };
     const stpData = await authenticatedFetch("ActionButtonsSP.executeSTP", stpBody);
     if (stpData.status !== "1" && stpData.status !== "2") throw new Error(stpData.statusMessage);
@@ -407,12 +369,12 @@ async function doTransaction(records) {
 }
 
 async function handleBaixa() {
-    const qtdBaixar = parseInt(document.getElementById('modal-qtd-baixa').value, 10);
-    const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
-    if (isNaN(qtdBaixar) || qtdBaixar <= 0 || qtdBaixar > qtdDisponivel) return openConfirmModal("Por favor, insira uma quantidade válida.");
-    closeBaixaModal();
-
-    const success = await runOperation(async () => {
+    showLoading(true);
+    try {
+        const qtdBaixar = parseInt(document.getElementById('modal-qtd-baixa').value, 10);
+        const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
+        if (isNaN(qtdBaixar) || qtdBaixar <= 0 || qtdBaixar > qtdDisponivel) throw new Error("Quantidade para baixa é inválida.");
+        closeBaixaModal();
         const baixaRecord = {
             entityName: "AD_IBXEND",
             fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
@@ -421,26 +383,28 @@ async function handleBaixa() {
         await doTransaction([baixaRecord]);
         switchView('main');
         await handleConsulta();
-    });
+    } catch (error) {
+        openConfirmModal(error.message, "Falha na Baixa");
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function handleTransfer() {
-    const quantidade = parseInt(document.getElementById('modal-qtd-transfer').value, 10);
-    const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
-    const enderecoDestino = document.getElementById('modal-enddes-transfer').value.trim();
-    const armazemDestino = document.getElementById('modal-armdes-transfer').value;
-
-    if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) return openConfirmModal("Por favor, insira uma quantidade válida.");
-    if (!armazemDestino) return openConfirmModal("Por favor, selecione um armazém de destino.");
-    if (!enderecoDestino) return openConfirmModal("Por favor, insira o endereço de destino.");
-    closeTransferModal();
-
-    const success = await runOperation(async () => {
+    showLoading(true);
+    try {
+        const quantidade = parseInt(document.getElementById('modal-qtd-transfer').value, 10);
+        const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
+        const enderecoDestino = document.getElementById('modal-enddes-transfer').value.trim();
+        const armazemDestino = document.getElementById('modal-armdes-transfer').value;
+        if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) throw new Error("Quantidade para transferência é inválida.");
+        if (!armazemDestino) throw new Error("Selecione um armazém de destino.");
+        if (!enderecoDestino) throw new Error("Insira o endereço de destino.");
+        closeTransferModal();
         const sqlCheck = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = ${enderecoDestino} AND CODARM = ${armazemDestino}`;
         const checkData = await authenticatedFetch("DbExplorerSP.executeQuery", { sql: sqlCheck });
         if (checkData.status !== '1') throw new Error("Falha ao verificar o endereço de destino.");
         const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
-        
         const records = [];
         if (destinationItem && destinationItem[0] === currentItemDetails.codprod) {
             const [destCodProd, destQtd] = destinationItem;
@@ -453,28 +417,30 @@ async function handleTransfer() {
             entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
             values: { "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
         });
-
         await doTransaction(records);
         switchView('main');
         await handleConsulta();
-    });
+    } catch (error) {
+        openConfirmModal(error.message, "Falha na Transferência");
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function handlePicking() {
-    const quantidade = parseInt(document.getElementById('modal-qtd-picking').value, 10);
-    const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
-    const enderecoDestino = document.getElementById('modal-seqend-picking').value;
-    if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) return openConfirmModal("Por favor, insira uma quantidade válida.");
-    if (!enderecoDestino) return openConfirmModal("Por favor, selecione um endereço de destino.");
-    closePickingModal();
-
-    const success = await runOperation(async () => {
+    showLoading(true);
+    try {
+        const quantidade = parseInt(document.getElementById('modal-qtd-picking').value, 10);
+        const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
+        const enderecoDestino = document.getElementById('modal-seqend-picking').value;
+        if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) throw new Error("Quantidade para picking é inválida.");
+        if (!enderecoDestino) throw new Error("Selecione um endereço de destino.");
+        closePickingModal();
         const armazemDestino = currentItemDetails.codarm.toString();
         const sqlCheck = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = ${enderecoDestino} AND CODARM = ${armazemDestino}`;
         const checkData = await authenticatedFetch("DbExplorerSP.executeQuery", { sql: sqlCheck });
         if (checkData.status !== '1') throw new Error("Falha ao verificar o endereço de destino.");
         const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
-        
         const records = [];
         if (destinationItem && destinationItem[0] === currentItemDetails.codprod) {
             const [destCodProd, destQtd] = destinationItem;
@@ -487,11 +453,14 @@ async function handlePicking() {
             entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
             values: { "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
         });
-
         await doTransaction(records);
         switchView('main');
         await handleConsulta();
-    });
+    } catch (error) {
+        openConfirmModal(error.message, "Falha na Operação de Picking");
+    } finally {
+        showLoading(false);
+    }
 }
 
 // --- Funções de Renderização e Inicialização ---
@@ -525,7 +494,6 @@ function populateDetails(details) {
     
     const detailsContent = document.getElementById('details-content');
     const pickingClass = endpic === 'S' ? 'picking-area' : '';
-
     detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Marca</div><div class="value">${marca || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
     feather.replace();
 }
@@ -536,11 +504,10 @@ function formatarData(dataString) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Listeners de Login/Logout
+    // Listeners
     document.getElementById('btn-login').addEventListener('click', handleLogin);
     document.getElementById('btn-logout').addEventListener('click', () => handleLogout(false));
     document.getElementById('login-password').addEventListener('keyup', (event) => { if (event.key === 'Enter') handleLogin(); });
-
     document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
     document.getElementById('filtro-sequencia').addEventListener('keyup', (event) => { if (event.key === 'Enter') handleConsulta(); });
     document.getElementById('btn-voltar').addEventListener('click', () => switchView('main'));
@@ -555,10 +522,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-confirmar-picking').addEventListener('click', handlePicking);
     document.getElementById('btn-close-confirm').addEventListener('click', closeConfirmModal);
 
-    // Verifica se já existe uma sessão
+    // Lógica de inicialização
     if (Session.getToken()) {
         switchView('main');
-        document.getElementById('user-info').textContent = `Usuário: ${Session.getUsername()}`;
+        const codUsu = Session.getCodUsu();
+        const username = Session.getUsername();
+        document.getElementById('user-info').textContent = `${codUsu} - ${username}`;
         
         setupActivityListeners();
         InactivityTimer.start();
