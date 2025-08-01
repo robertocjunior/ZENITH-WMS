@@ -34,6 +34,78 @@ html, body {
     display: flex;
 }
 
+/* ================================== */
+/* NOVOS ESTILOS PARA TELA DE LOGIN   */
+/* ================================== */
+#login-page {
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+}
+.login-container {
+    background-color: var(--card-background);
+    padding: 40px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    text-align: center;
+}
+.login-container h2 {
+    font-size: 28px;
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
+.login-container p {
+    margin-bottom: 30px;
+    color: var(--text-light);
+}
+.login-container .modal-input-group {
+    text-align: left;
+}
+.login-container .modal-input-group input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(0, 82, 155, 0.15);
+}
+.login-container .btn-action {
+    width: 100%;
+    margin-top: 15px;
+    padding: 15px;
+    background-color: var(--primary-color);
+    font-size: 16px;
+    font-weight: 500;
+}
+
+/* ================================== */
+/* MODIFICAÇÕES NO HEADER DO APP      */
+/* ================================== */
+.header-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: white;
+    padding: 0 5px; /* Pequeno ajuste de padding */
+}
+#user-info {
+    font-weight: 500;
+}
+#btn-logout {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.8;
+    padding: 5px;
+    border-radius: 5px;
+}
+#btn-logout:hover {
+    opacity: 1;
+    background-color: rgba(255,255,255,0.1);
+}
+
 /* TELA PRINCIPAL */
 .app-header {
     background-color: var(--primary-color);
@@ -125,15 +197,13 @@ html, body {
 .card-header, .card-footer {
     display: flex;
     justify-content: space-between;
-    align-items: baseline; /* MODIFICADO: Alinha pela base do texto */
+    align-items: baseline;
     font-size: 14px;
     color: var(--text-light);
     gap: 10px;
 }
 
 .card-header span { font-weight: 500; color: var(--text-color); }
-
-/* NOVO: Estilos para destacar a Sequência */
 .card-header p:first-child {
     color: var(--primary-color);
     font-weight: 500;
@@ -142,8 +212,6 @@ html, body {
     font-size: 20px;
     font-weight: 700;
 }
-
-
 .card-body .product-desc { font-size: 18px; font-weight: 600; }
 .card-footer .product-code { background-color: #e9ecef; padding: 3px 8px; border-radius: 4px; }
 .card-footer .product-validity { font-weight: 600; color: var(--primary-color); }
@@ -239,11 +307,11 @@ html, body {
 .modal-content #modal-confirm-message p + p { margin-top: 10px; }
 
 .modal-input-group { margin-bottom: 20px; }
-.modal-input-group label { display: block; margin-bottom: 5px; }
+.modal-input-group label { display: block; margin-bottom: 5px; color: var(--text-light); }
 .modal-input-group input,
 .modal-input-group select {
     width: 100%;
-    padding: 10px;
+    padding: 12px;
     font-size: 16px;
     border-radius: 5px;
     border: 1px solid var(--border-color);

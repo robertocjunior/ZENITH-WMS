@@ -147,5 +147,5 @@ yarn-debug.log*
 yarn-error.log*
 
 # Ignorar arquivos de chaves de segurança
-chave_privada.pem
-chave_publica.pem
+rsa_private_key.pem
+rsa_public_key.pem
