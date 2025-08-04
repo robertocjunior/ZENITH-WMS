@@ -241,8 +241,6 @@ async function handleLogin() {
         Session.saveCodUsu(codUsu);
 
         switchView('main');
-        // A linha abaixo foi removida pois o elemento #user-info não existe mais no botão
-        // document.getElementById('user-info').textContent = `${codUsu} - ${username}`;
         setupActivityListeners();
         InactivityTimer.start();
         await fetchAndPopulateWarehouses();
@@ -369,24 +367,55 @@ async function doTransaction(records) {
     const hoje = new Date().toLocaleDateString('pt-BR');
     const codUsu = Session.getCodUsu();
     if (!codUsu) throw new Error("Código do usuário não encontrado na sessão. Faça login novamente.");
+
+    // 1. Cria o cabeçalho da baixa
     const cabecalhoBody = { 
         entityName: "AD_BXAEND", 
         fields: ["SEQBAI", "DATGER", "USUGER"], 
         records: [{ values: { "1": hoje, "2": codUsu } }] 
     };
     const cabecalhoData = await authenticatedFetch("DatasetSP.save", cabecalhoBody);
-    if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) throw new Error(cabecalhoData.statusMessage);
+    if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) {
+        throw new Error(cabecalhoData.statusMessage || "Falha ao criar cabeçalho da baixa.");
+    }
     const seqBai = cabecalhoData.responseBody.result[0][0];
+
+    // 2. Insere os itens da baixa
     for (const record of records) {
         record.values["1"] = seqBai;
-        const itemBody = { entityName: record.entityName, standAlone: false, fields: record.fields, records: [{ values: record.values }] };
+        const itemBody = { 
+            entityName: record.entityName, 
+            standAlone: false, 
+            fields: record.fields, 
+            records: [{ values: record.values }] 
+        };
         const itemData = await authenticatedFetch("DatasetSP.save", itemBody);
-        if (itemData.status !== "1") throw new Error(itemData.statusMessage);
+        if (itemData.status !== "1") {
+            throw new Error(itemData.statusMessage || "Falha ao inserir item da baixa.");
+        }
     }
-    const stpBody = { stpCall: { actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND", rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } } };
+
+    // 3. Adiciona uma pausa fixa, já que não é possível verificar o campo via SQL.
+    const delay = ms => new Promise(res => setTimeout(res, ms));
+    await delay(2000); // Pausa de 2 segundos. Ajuste este valor se necessário.
+
+    // 4. Executa a procedure de baixa
+    const stpBody = { 
+        stpCall: { 
+            actionID: "20", 
+            procName: "NIC_STP_BAIXA_END", 
+            rootEntity: "AD_BXAEND", 
+            rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } 
+        } 
+    };
     const stpData = await authenticatedFetch("ActionButtonsSP.executeSTP", stpBody);
-    if (stpData.status !== "1" && stpData.status !== "2") throw new Error(stpData.statusMessage);
-    if (stpData.statusMessage) openConfirmModal(stpData.statusMessage, 'Sucesso!');
+    if (stpData.status !== "1" && stpData.status !== "2") {
+        throw new Error(stpData.statusMessage || "Falha ao executar a procedure de baixa.");
+    }
+    
+    if (stpData.statusMessage) {
+        openConfirmModal(stpData.statusMessage, 'Sucesso!');
+    }
 }
 
 async function handleBaixa() {
