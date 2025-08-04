@@ -31,7 +31,8 @@ async function authenticatedFetch(endpoint, body = {}) {
         handleLogout();
         throw new Error("Sessão inválida. Por favor, faça login novamente.");
     }
-    const response = await fetch(`${PROXY_URL}${endpoint}`, {
+    // MODIFICADO: Adiciona o prefixo /api a todas as chamadas autenticadas
+    const response = await fetch(`${PROXY_URL}/api${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(body)
@@ -57,6 +58,7 @@ async function handleLogin() {
     showLoading(true);
     try {
         const deviceToken = Device.getToken();
+        // A rota de login não tem o prefixo /api, então é chamada diretamente
         const response = await fetch(`${PROXY_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -78,7 +80,6 @@ async function handleLogin() {
         setupActivityListeners();
         InactivityTimer.start();
         await fetchAndPopulateWarehouses();
-        feather.replace();
     } catch (error) {
         Session.clearToken(); Session.clearUsername(); Session.clearCodUsu();
         openConfirmModal(error.message, "Falha no Login");
@@ -92,13 +93,23 @@ async function handleLogout(fromInactivity = false) {
     closeProfilePanel();
     const token = Session.getToken();
     if (token) {
-        try { await fetch(`${PROXY_URL}/logout`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-        } catch(e) { console.error("Falha ao notificar servidor do logout:", e); }
+        try {
+            // MODIFICADO: Usa authenticatedFetch para chamar a rota /api/logout, que agora é protegida
+            await authenticatedFetch('/logout');
+        } catch (e) {
+            // O erro já será tratado pelo authenticatedFetch, mas podemos logar se quisermos
+            console.error("Falha ao notificar servidor do logout:", e.message);
+        }
     }
-    Session.clearToken(); Session.clearUsername(); Session.clearCodUsu();
-    InactivityTimer.clear(); removeActivityListeners();
+    Session.clearToken();
+    Session.clearUsername();
+    Session.clearCodUsu();
+    InactivityTimer.clear();
+    removeActivityListeners();
     switchView('login');
-    if (fromInactivity) openConfirmModal("Sua sessão expirou por inatividade.", "Sessão Expirada");
+    if (fromInactivity) {
+        openConfirmModal("Sua sessão expirou por inatividade.", "Sessão Expirada");
+    }
 }
 
 async function fetchAndPopulateWarehouses() {
@@ -283,7 +294,7 @@ async function openPickingModal() {
 }
 
 // ======================================================
-// FUNÇÕES DE UI E RENDERIZAÇÃO (com a correção em switchView)
+// FUNÇÕES DE UI E RENDERIZAÇÃO
 // ======================================================
 function renderizarCards(rows) {
     const resultsContainer = document.getElementById('results-container');
@@ -313,7 +324,6 @@ function populateDetails(detailsArray) {
     const detailsContent = document.getElementById('details-content');
     const pickingClass = endpic === 'S' ? 'picking-area' : '';
     detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Marca</div><div class="value">${marca || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
-    feather.replace();
 }
 function renderHistoryCards(rows) {
     const container = document.getElementById('history-container');
@@ -331,14 +341,13 @@ function renderHistoryCards(rows) {
         let productHtml = descrprod ? `<div class="product-info">${descrprod}<span class="product-code">Cód: ${codprod}</span></div>` : '';
         let movementHtml = '';
         if (armdes && enddes) {
-            movementHtml = `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><i data-feather="arrow-right" class="arrow"></i><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
+            movementHtml = `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
         } else {
             movementHtml = `<div class="history-location"><div class="location"><div class="label">Local da Baixa</div><div>${codarm} &rarr; ${seqend}</div></div></div>`;
         }
         card.innerHTML = `<div class="card-header"><p>Operação: <span>${seqbai}</span></p><p>${hora}</p></div><div class="card-body">${productHtml}${movementHtml}</div>`;
         container.appendChild(card);
     });
-    feather.replace();
 }
 function formatarData(dataString) {
     if (!dataString || typeof dataString !== 'string') return '';
@@ -346,11 +355,7 @@ function formatarData(dataString) {
     return parteData.length !== 8 ? dataString : `${parteData.substring(0, 2)}/${parteData.substring(2, 4)}/${parteData.substring(4, 8)}`;
 }
 
-// ================================== 
-// FUNÇÃO CORRIGIDA
-// ==================================
 function switchView(viewName) {
-    // Esconde todas as sub-páginas dentro do container principal
     document.querySelectorAll('#app-container .page').forEach(p => p.classList.remove('active'));
     
     const loginPage = document.getElementById('login-page');
@@ -363,7 +368,6 @@ function switchView(viewName) {
         loginPage.classList.add('hidden');
         appContainer.classList.remove('hidden');
         
-        // Ativa a sub-página correta dentro do app-container
         const activePage = document.getElementById(`${viewName}-page`);
         if (activePage) {
             activePage.classList.add('active');
@@ -395,7 +399,7 @@ function closeTransferModal() { document.getElementById('transfer-modal').classL
 function closePickingModal() { document.getElementById('picking-modal').classList.add('hidden'); }
 const loading = document.getElementById('loading');
 function showLoading(show) { loading.classList.toggle('hidden', !show); }
-function openProfilePanel() { document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-panel').classList.add('active'); document.getElementById('profile-user-info').textContent = `${Session.getCodUsu()} - ${Session.getUsername()}`; document.getElementById('session-hash').textContent = Session.getToken(); feather.replace(); }
+function openProfilePanel() { document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-panel').classList.add('active'); document.getElementById('profile-user-info').textContent = `${Session.getCodUsu()} - ${Session.getUsername()}`; document.getElementById('session-hash').textContent = Session.getToken(); }
 function closeProfilePanel() { document.getElementById('profile-overlay').classList.add('hidden'); document.getElementById('profile-panel').classList.remove('active'); }
 const InactivityTimer = { timeoutID: null, timeoutInMilliseconds: 3600 * 1000, start: function() { this.clear(); this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds); }, reset: function() { this.start(); }, clear: function() { if (this.timeoutID) clearTimeout(this.timeoutID); }, forceLogout: function() { handleLogout(true); }};
 const activityEvents = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
@@ -434,7 +438,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setupActivityListeners();
         InactivityTimer.start();
         fetchAndPopulateWarehouses();
-        feather.replace();
     } else {
         switchView('login');
     }

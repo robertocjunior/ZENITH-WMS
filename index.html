@@ -6,7 +6,7 @@
     <title>Consulta de Endereçamento</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
-    <script src="https://unpkg.com/feather-icons"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body>
     <div id="login-page" class="page active">
@@ -37,13 +37,13 @@
                             </select>
                         </div>
                         <button id="btn-open-profile" class="profile-button">
-                            <i data-feather="user"></i>
+                            <span class="material-icons">account_circle</span>
                         </button>
                     </div>
                 </div>
                 <div class="search-bar">
                     <div class="input-wrapper">
-                        <i data-feather="search"></i>
+                        <span class="material-icons">search</span>
                         <input type="text" id="filtro-sequencia" placeholder="Buscar..." autocomplete="off">
                     </div>
                     <button id="btn-consultar">Buscar</button>
@@ -51,15 +51,15 @@
             </header>
             <main id="results-container" class="results-container"></main>
             <div id="empty-state" class="empty-state hidden">
-                <i data-feather="package"></i>
+                <span class="material-icons">inventory_2</span>
                 <p>Nenhum resultado para exibir</p>
                 <span>Selecione um armazém para começar</span>
             </div>
         </div>
-    
+
         <div id="details-page" class="page">
             <header class="details-header">
-                <button id="btn-voltar"><i data-feather="arrow-left"></i> Voltar</button>
+                <button id="btn-voltar"><span class="material-icons">arrow_back</span> Voltar</button>
                 <h2 id="details-title">Detalhes do Endereço</h2>
             </header>
             <div id="details-content" class="details-content"></div>
@@ -72,12 +72,12 @@
 
         <div id="history-page" class="page">
             <header class="details-header">
-                <button id="btn-history-voltar"><i data-feather="arrow-left"></i> Voltar</button>
+                <button id="btn-history-voltar"><span class="material-icons">arrow_back</span> Voltar</button>
                 <h2>Histórico de Hoje</h2>
             </header>
             <main id="history-container" class="results-container"></main>
             <div id="history-empty-state" class="empty-state hidden">
-                <i data-feather="clock"></i>
+                <span class="material-icons">history</span>
                 <p>Nenhuma operação hoje</p>
                 <span>Nenhum registro de baixa ou transferência foi encontrado para você na data de hoje.</span>
             </div>
@@ -88,20 +88,20 @@
     <div id="profile-panel" class="profile-panel">
         <div class="profile-panel-header">
             <div class="profile-info">
-                <i data-feather="user-check"></i>
+                <span class="material-icons">account_circle</span>
                 <span id="profile-user-info"></span>
             </div>
-            <button id="btn-close-profile" class="close-panel-btn"><i data-feather="x"></i></button>
+            <button id="btn-close-profile" class="close-panel-btn"><span class="material-icons">close</span></button>
         </div>
         <div class="profile-panel-body">
             <button class="panel-button" id="btn-history">
-                <i data-feather="clock"></i>
+                <span class="material-icons">history</span>
                 <span>Histórico de Operações</span>
             </button>
         </div>
         <div class="profile-panel-footer">
             <button class="panel-button logout-button" id="btn-logout">
-                <i data-feather="log-out"></i>
+                <span class="material-icons">logout</span>
                 <span>Sair</span>
             </button>
             <div class="session-hash-container">
@@ -110,7 +110,6 @@
             </div>
         </div>
     </div>
-
 
     <div id="baixa-modal" class="modal-overlay hidden">
         <div class="modal-content">
@@ -185,10 +184,7 @@
             </div>
         </div>
     </div>
-
-    <script>
-      feather.replace();
-    </script>
+    
     <script src="config.js"></script>
     <script src="app.js"></script>
 </body>

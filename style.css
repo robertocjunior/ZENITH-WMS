@@ -118,9 +118,13 @@ html, body {
     background-color: rgba(255, 255, 255, 0.1);
 }
 
-.profile-button i {
+/* Ajustando o ícone para Google Icons */
+.profile-button .material-icons,
+.details-header .material-icons,
+.search-bar .material-icons {
     width: 24px;  
     height: 24px;
+    font-size: 24px;
 }
 
 .warehouse-selector {
@@ -162,7 +166,8 @@ html, body {
     min-width: 0;
 }
 
-.input-wrapper i { color: var(--text-light); margin-right: 10px; }
+/* Ajustando o ícone para Google Icons */
+.input-wrapper .material-icons { color: var(--text-light); margin-right: 10px; }
 .input-wrapper input { width: 100%; border: none; outline: none; font-size: 16px; padding: 10px 0; background-color: transparent; }
 
 .search-bar button {
@@ -463,7 +468,7 @@ html, body {
     text-align: center;
     color: var(--text-light);
 }
-.empty-state i { width: 60px; height: 60px; margin-bottom: 20px; }
+.empty-state .material-icons { width: 60px; height: 60px; font-size: 60px; margin-bottom: 20px; }
 .spinner {
     border: 4px solid rgba(0, 0, 0, 0.1);
     width: 36px;
