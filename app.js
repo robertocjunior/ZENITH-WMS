@@ -1,7 +1,8 @@
+// app.js
 let currentItemDetails = null;
 
 // ======================================================
-// GERENCIAMENTO DA SESSÃO (JWT)
+// GERENCIAMENTO DA SESSÃO E DISPOSITIVO
 // ======================================================
 const Session = {
     getToken: () => localStorage.getItem('sessionToken'),
@@ -15,12 +16,18 @@ const Session = {
     clearCodUsu: () => localStorage.removeItem('codusu'),
 };
 
+const Device = {
+    getToken: () => localStorage.getItem('deviceToken'),
+    saveToken: (token) => localStorage.setItem('deviceToken', token),
+    clearToken: () => localStorage.removeItem('deviceToken')
+};
+
 // ======================================================
 // GERENCIAMENTO DE INATIVIDADE
 // ======================================================
 const InactivityTimer = {
     timeoutID: null,
-    timeoutInMilliseconds: 3600 * 1000, // 1 hora
+    timeoutInMilliseconds: 3600 * 1000,
     start: function() {
         this.clear();
         this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds);
@@ -224,33 +231,42 @@ async function handleLogin() {
     const passwordInput = document.getElementById('login-password');
     const username = usernameInput.value.trim();
     const password = passwordInput.value.trim();
+
     if (!username || !password) return openConfirmModal("Por favor, preencha o usuário e a senha.");
     
     showLoading(true);
     try {
+        const deviceToken = Device.getToken();
+
         const response = await fetch(`${PROXY_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ username, password, deviceToken })
         });
+
         const data = await response.json();
-        if (!response.ok) throw new Error(data.message);
+        
+        // MODIFICADO: Lógica para tratar o erro 403 e ainda salvar o token
+        if (!response.ok) {
+            // Se o erro é 403 (dispositivo novo/inativo), e o corpo da resposta tem um deviceToken
+            if (response.status === 403 && data.deviceToken) {
+                Device.saveToken(data.deviceToken); // Salva o token para a próxima tentativa
+            }
+            throw new Error(data.message);
+        }
+
+        // Se chegou aqui, o login foi 100% bem-sucedido
         Session.saveToken(data.sessionToken);
         Session.saveUsername(data.username);
-        
-        const sql = `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${username.toUpperCase()}'`;
-        const userData = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
-        if (userData.status !== '1' || userData.responseBody.rows.length === 0) {
-            throw new Error("Não foi possível encontrar o código de usuário (CODUSU).");
-        }
-        const codUsu = userData.responseBody.rows[0][0];
-        Session.saveCodUsu(codUsu);
+        Session.saveCodUsu(data.codusu);
+        Device.saveToken(data.deviceToken);
 
         switchView('main');
         setupActivityListeners();
         InactivityTimer.start();
         await fetchAndPopulateWarehouses();
         feather.replace();
+
     } catch (error) {
         Session.clearToken();
         Session.clearUsername();
@@ -261,6 +277,7 @@ async function handleLogin() {
         passwordInput.value = '';
     }
 }
+
 
 async function handleLogout(fromInactivity = false) {
     closeProfilePanel();
@@ -276,6 +293,7 @@ async function handleLogout(fromInactivity = false) {
     Session.clearToken();
     Session.clearUsername();
     Session.clearCodUsu();
+    // Device.clearToken(); // Opcional: Descomente se quiser que o dispositivo peça autorização de novo após um logout manual.
     InactivityTimer.clear();
     removeActivityListeners();
     switchView('login');
@@ -284,7 +302,8 @@ async function handleLogout(fromInactivity = false) {
     }
 }
 
-async function fetchAndPopulateWarehouses() {
+// ... (O RESTO DO SEU CÓDIGO PERMANECE IGUAL) ...
+async function fetchAndPopulateWarehouses(){/*...função original...*/
     showLoading(true);
     try {
         const sql = "SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM ORDER BY CODARM";
@@ -309,8 +328,7 @@ async function fetchAndPopulateWarehouses() {
         showLoading(false);
     }
 }
-
-async function handleConsulta() {
+async function handleConsulta(){/*...função original...*/
     showLoading(true);
     try {
         const codArm = document.getElementById('armazem-select').value;
@@ -349,8 +367,7 @@ async function handleConsulta() {
         showLoading(false);
     }
 }
-
-async function fetchAndShowDetails(sequencia) {
+async function fetchAndShowDetails(sequencia){/*...função original...*/
     showLoading(true);
     try {
         const codArm = document.getElementById('armazem-select').value;
@@ -368,8 +385,7 @@ async function fetchAndShowDetails(sequencia) {
         showLoading(false);
     }
 }
-
-async function showHistoryPage() {
+async function showHistoryPage(){/*...função original...*/
     closeProfilePanel();
     showLoading(true);
     switchView('history');
@@ -433,8 +449,7 @@ async function showHistoryPage() {
         showLoading(false);
     }
 }
-
-function renderHistoryCards(rows) {
+function renderHistoryCards(rows){/*...função original...*/
     const container = document.getElementById('history-container');
     const emptyState = document.getElementById('history-empty-state');
     container.innerHTML = '';
@@ -460,7 +475,6 @@ function renderHistoryCards(rows) {
         
         let movementHtml = '';
         if (armdes && enddes) {
-            // É uma transferência
             movementHtml = `
                 <div class="history-movement">
                     <div class="origin">
@@ -474,7 +488,6 @@ function renderHistoryCards(rows) {
                     </div>
                 </div>`;
         } else {
-            // É uma baixa simples
             movementHtml = `
                 <div class="history-location">
                     <div class="location">
@@ -497,11 +510,9 @@ function renderHistoryCards(rows) {
         container.appendChild(card);
     });
 
-    feather.replace(); // Atualiza os ícones do Feather
+    feather.replace();
 }
-
-
-async function pollForCodProdUpdate(seqBai, expectedRecords, timeout = 20000, interval = 500) {
+async function pollForCodProdUpdate(seqBai, expectedRecords, timeout = 20000, interval = 500){/*...função original...*/
     const startTime = Date.now();
     const sql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
 
@@ -523,8 +534,7 @@ async function pollForCodProdUpdate(seqBai, expectedRecords, timeout = 20000, in
 
     throw new Error("O sistema não populou o CODPROD a tempo (timeout). A operação pode não ter sido concluída corretamente.");
 }
-
-async function doTransaction(records) {
+async function doTransaction(records){/*...função original...*/
     const hoje = new Date().toLocaleDateString('pt-BR');
     const codUsu = Session.getCodUsu();
     if (!codUsu) throw new Error("Código do usuário não encontrado na sessão. Faça login novamente.");
@@ -578,8 +588,7 @@ async function doTransaction(records) {
         openConfirmModal(stpData.statusMessage, 'Sucesso!');
     }
 }
-
-async function handleBaixa() {
+async function handleBaixa(){/*...função original...*/
     showLoading(true);
     try {
         const qtdBaixar = parseInt(document.getElementById('modal-qtd-baixa').value, 10);
@@ -600,8 +609,7 @@ async function handleBaixa() {
         showLoading(false);
     }
 }
-
-async function handleTransfer() {
+async function handleTransfer(){/*...função original...*/
     showLoading(true);
     try {
         const quantidade = parseInt(document.getElementById('modal-qtd-transfer').value, 10);
@@ -637,8 +645,7 @@ async function handleTransfer() {
         showLoading(false);
     }
 }
-
-async function handlePicking() {
+async function handlePicking(){/*...função original...*/
     showLoading(true);
     try {
         const quantidade = parseInt(document.getElementById('modal-qtd-picking').value, 10);
@@ -673,9 +680,7 @@ async function handlePicking() {
         showLoading(false);
     }
 }
-
-// --- Funções de Renderização e Inicialização ---
-function renderizarCards(rows) {
+function renderizarCards(rows){/*...função original...*/
     const resultsContainer = document.getElementById('results-container');
     const emptyState = document.getElementById('empty-state');
     if (!rows || rows.length === 0) {
@@ -699,7 +704,7 @@ function renderizarCards(rows) {
         resultsContainer.appendChild(card);
     });
 }
-function populateDetails(details) {
+function populateDetails(details){/*...função original...*/
     const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta] = details;
     currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta };
     
@@ -708,14 +713,13 @@ function populateDetails(details) {
     detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Marca</div><div class="value">${marca || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
     feather.replace();
 }
-function formatarData(dataString) {
+function formatarData(dataString){/*...função original...*/
     if (!dataString || typeof dataString !== 'string') return '';
     const parteData = dataString.split(' ')[0];
     return parteData.length !== 8 ? dataString : `${parteData.substring(0, 2)}/${parteData.substring(2, 4)}/${parteData.substring(4, 8)}`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Buttons and Listeners
     document.getElementById('btn-login').addEventListener('click', handleLogin);
     document.getElementById('btn-logout').addEventListener('click', () => handleLogout(false));
     document.getElementById('login-password').addEventListener('keyup', (event) => { if (event.key === 'Enter') handleLogin(); });
@@ -739,7 +743,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-history-voltar').addEventListener('click', () => switchView('main'));
 
 
-    // Startup Logic
     if (Session.getToken()) {
         switchView('main');
         setupActivityListeners();
