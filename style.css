@@ -275,6 +275,8 @@ html, body {
     background-color: var(--card-background);
     box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
     flex-shrink: 0;
+    position: relative; /* Necessário para que o z-index funcione */
+    z-index: 10;      /* Eleva a barra de botões acima de outros conteúdos */
 }
 .btn-action { flex: 1; padding: 18px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; color: white; }
 .btn-baixar { background-color: #28a745; }
