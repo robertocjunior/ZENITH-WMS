@@ -386,13 +386,37 @@ async function showHistoryPage() {
         });
 
         const sql = `
-            SELECT BXA.SEQBAI, TO_CHAR(BXA.DATGER, 'HH24:MI:SS') AS HORA, IBX.CODARM, IBX.SEQEND, IBX.CODPROD, PRO.DESCRPROD 
-            FROM AD_BXAEND BXA 
-            JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI 
-            LEFT JOIN TGFPRO PRO ON IBX.CODPROD = PRO.CODPROD
-            WHERE BXA.USUGER = ${codUsu} 
-              AND TRUNC(BXA.DATGER) = TO_DATE('${hoje}', 'DD/MM/YYYY') 
-            ORDER BY BXA.DATGER DESC`;
+            WITH RankedItems AS (
+                SELECT 
+                    BXA.SEQBAI,
+                    TO_CHAR(BXA.DATGER, 'HH24:MI:SS') AS HORA,
+                    BXA.DATGER,
+                    IBX.CODARM,
+                    IBX.SEQEND,
+                    IBX.ARMDES,
+                    IBX.ENDDES,
+                    IBX.CODPROD,
+                    IBX.SEQITE,
+                    PRO.DESCRPROD,
+                    ROW_NUMBER() OVER(PARTITION BY BXA.SEQBAI ORDER BY IBX.SEQITE DESC) as rn
+                FROM AD_BXAEND BXA
+                JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI
+                LEFT JOIN TGFPRO PRO ON IBX.CODPROD = PRO.CODPROD
+                WHERE BXA.USUGER = ${codUsu}
+                AND TRUNC(BXA.DATGER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
+            )
+            SELECT
+                SEQBAI,
+                HORA,
+                CODARM,
+                SEQEND,
+                ARMDES,
+                ENDDES,
+                CODPROD,
+                DESCRPROD
+            FROM RankedItems
+            WHERE rn = 1
+            ORDER BY DATGER DESC`;
 
         const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
 
@@ -423,31 +447,59 @@ function renderHistoryCards(rows) {
     emptyState.classList.add('hidden');
 
     rows.forEach(row => {
-        const [seqbai, hora, codarm, seqend, codprod, descrprod] = row;
+        const [seqbai, hora, codarm, seqend, armdes, enddes, codprod, descrprod] = row;
 
         const card = document.createElement('div');
         card.className = 'history-card';
 
-        const productInfo = codprod ? 
-            `<p class="product-desc">${descrprod || 'Produto ' + codprod}</p><span class="product-code">Cód: ${codprod}</span>` :
-            `<p class="product-desc">Baixa de Endereço</p><span class="product-code">Apenas baixa</span>`;
+        let productHtml = `
+            <div class="product-info">
+                ${descrprod || 'Produto ' + codprod}
+                <span class="product-code">Cód: ${codprod}</span>
+            </div>`;
+        
+        let movementHtml = '';
+        if (armdes && enddes) {
+            // É uma transferência
+            movementHtml = `
+                <div class="history-movement">
+                    <div class="origin">
+                        <div class="label">Origem</div>
+                        <div>${codarm} &rarr; ${seqend}</div>
+                    </div>
+                    <i data-feather="arrow-right" class="arrow"></i>
+                    <div class="destination">
+                        <div class="label">Destino</div>
+                        <div>${armdes} &rarr; ${enddes}</div>
+                    </div>
+                </div>`;
+        } else {
+            // É uma baixa simples
+            movementHtml = `
+                <div class="history-location">
+                    <div class="location">
+                        <div class="label">Local da Baixa</div>
+                        <div>${codarm} &rarr; ${seqend}</div>
+                    </div>
+                </div>`;
+        }
 
         card.innerHTML = `
             <div class="card-header">
-                <p>Baixa: <span>${seqbai}</span></p>
+                <p>Operação: <span>${seqbai}</span></p>
                 <p>${hora}</p>
             </div>
             <div class="card-body">
-                ${productInfo}
-            </div>
-            <div class="card-footer">
-                <span>Armazém: <strong>${codarm}</strong></span>
-                <span>Endereço: <strong>${seqend}</strong></span>
+                ${codprod ? productHtml : ''}
+                ${movementHtml}
             </div>
         `;
         container.appendChild(card);
     });
+
+    feather.replace(); // Atualiza os ícones do Feather
 }
+
 
 async function pollForCodProdUpdate(seqBai, expectedRecords, timeout = 20000, interval = 500) {
     const startTime = Date.now();
