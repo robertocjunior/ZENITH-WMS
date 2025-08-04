@@ -77,6 +77,8 @@ function switchView(viewName) {
     const appContainer = document.getElementById('app-container');
     const mainPage = document.getElementById('main-page');
     const detailsPage = document.getElementById('details-page');
+    const historyPage = document.getElementById('history-page'); 
+
     if (viewName === 'login') {
         loginPage.classList.add('active');
         loginPage.classList.remove('hidden');
@@ -85,12 +87,17 @@ function switchView(viewName) {
         loginPage.classList.remove('active');
         loginPage.classList.add('hidden');
         appContainer.classList.remove('hidden');
+
+        mainPage.classList.remove('active');
+        detailsPage.classList.remove('active');
+        historyPage.classList.remove('active');
+
         if (viewName === 'main') {
             mainPage.classList.add('active');
-            detailsPage.classList.remove('active');
         } else if (viewName === 'details') {
-            mainPage.classList.remove('active');
             detailsPage.classList.add('active');
+        } else if (viewName === 'history') {
+            historyPage.classList.add('active');
         }
     }
 }
@@ -178,7 +185,6 @@ function openProfilePanel() {
 function closeProfilePanel() {
     document.getElementById('profile-overlay').classList.remove('active');
     document.getElementById('profile-panel').classList.remove('active');
-    // Adiciona um pequeno delay para a animação de fade-out acontecer
     setTimeout(() => {
         document.getElementById('profile-overlay').classList.add('hidden');
     }, 300);
@@ -363,9 +369,86 @@ async function fetchAndShowDetails(sequencia) {
     }
 }
 
-/**
- * Verifica o banco de dados repetidamente até que o campo CODPROD seja populado.
- */
+async function showHistoryPage() {
+    closeProfilePanel();
+    showLoading(true);
+    switchView('history');
+
+    try {
+        const codUsu = Session.getCodUsu();
+        if (!codUsu) {
+            throw new Error("Código do usuário não encontrado na sessão.");
+        }
+        const hoje = new Date().toLocaleDateString('pt-BR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+
+        const sql = `
+            SELECT BXA.SEQBAI, TO_CHAR(BXA.DATGER, 'HH24:MI:SS') AS HORA, IBX.CODARM, IBX.SEQEND, IBX.CODPROD, PRO.DESCRPROD 
+            FROM AD_BXAEND BXA 
+            JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI 
+            LEFT JOIN TGFPRO PRO ON IBX.CODPROD = PRO.CODPROD
+            WHERE BXA.USUGER = ${codUsu} 
+              AND TRUNC(BXA.DATGER) = TO_DATE('${hoje}', 'DD/MM/YYYY') 
+            ORDER BY BXA.DATGER DESC`;
+
+        const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
+
+        if (data.status !== "1") {
+            throw new Error(data.statusMessage || "Falha ao carregar o histórico.");
+        }
+
+        renderHistoryCards(data.responseBody.rows);
+
+    } catch (error) {
+        openConfirmModal(error.message, "Erro ao carregar Histórico");
+        switchView('main');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function renderHistoryCards(rows) {
+    const container = document.getElementById('history-container');
+    const emptyState = document.getElementById('history-empty-state');
+    container.innerHTML = '';
+
+    if (!rows || rows.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
+    }
+
+    emptyState.classList.add('hidden');
+
+    rows.forEach(row => {
+        const [seqbai, hora, codarm, seqend, codprod, descrprod] = row;
+
+        const card = document.createElement('div');
+        card.className = 'history-card';
+
+        const productInfo = codprod ? 
+            `<p class="product-desc">${descrprod || 'Produto ' + codprod}</p><span class="product-code">Cód: ${codprod}</span>` :
+            `<p class="product-desc">Baixa de Endereço</p><span class="product-code">Apenas baixa</span>`;
+
+        card.innerHTML = `
+            <div class="card-header">
+                <p>Baixa: <span>${seqbai}</span></p>
+                <p>${hora}</p>
+            </div>
+            <div class="card-body">
+                ${productInfo}
+            </div>
+            <div class="card-footer">
+                <span>Armazém: <strong>${codarm}</strong></span>
+                <span>Endereço: <strong>${seqend}</strong></span>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
 async function pollForCodProdUpdate(seqBai, expectedRecords, timeout = 20000, interval = 500) {
     const startTime = Date.now();
     const sql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
@@ -394,7 +477,6 @@ async function doTransaction(records) {
     const codUsu = Session.getCodUsu();
     if (!codUsu) throw new Error("Código do usuário não encontrado na sessão. Faça login novamente.");
 
-    // 1. Cria o cabeçalho da baixa
     const cabecalhoBody = { 
         entityName: "AD_BXAEND", 
         fields: ["SEQBAI", "DATGER", "USUGER"], 
@@ -406,7 +488,6 @@ async function doTransaction(records) {
     }
     const seqBai = cabecalhoData.responseBody.result[0][0];
 
-    // 2. Insere os itens da baixa
     for (const record of records) {
         record.values["1"] = seqBai;
         const itemBody = { 
@@ -421,7 +502,6 @@ async function doTransaction(records) {
         }
     }
 
-    // 3. Aguarda ativamente o campo CODPROD ser populado
     try {
         await pollForCodProdUpdate(seqBai, records.length);
     } catch (error) {
@@ -429,7 +509,6 @@ async function doTransaction(records) {
         return; 
     }
 
-    // 4. Executa a procedure de baixa
     const stpBody = { 
         stpCall: { 
             actionID: "20", 
@@ -604,6 +683,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-open-profile').addEventListener('click', openProfilePanel);
     document.getElementById('btn-close-profile').addEventListener('click', closeProfilePanel);
     document.getElementById('profile-overlay').addEventListener('click', closeProfilePanel);
+    document.getElementById('btn-history').addEventListener('click', showHistoryPage);
+    document.getElementById('btn-history-voltar').addEventListener('click', () => switchView('main'));
 
 
     // Startup Logic

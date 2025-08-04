@@ -8,6 +8,9 @@
     --border-color: #e0e0e0;
     --picking-background-color: #fffbe6;
     --picking-border-color: #ffe58f;
+    --history-background-color: #f0f8ff;
+    --history-border-color: #d6e8fa;
+    --history-header-color: #4a6a9b;
 }
 
 * {
@@ -89,11 +92,6 @@ html, body {
     gap: 15px;
 }
 
-/* Alterado: Removido pois não é mais necessário */
-.header-main-line {
-    /* Este seletor foi removido do CSS para simplificar */
-}
-
 /* Container para agrupar seletor e botão */
 .header-left-items {
     display: flex;
@@ -125,7 +123,6 @@ html, body {
     height: 24px;
 }
 
-/* Alterado: Label acima e seletor crescendo */
 .warehouse-selector {
     display: flex;
     flex-direction: column; /* Faz a label ficar acima do select */
@@ -259,7 +256,7 @@ html, body {
     flex-shrink: 0;
 }
 
-#btn-voltar {
+#btn-voltar, #btn-history-voltar {
     background: none;
     border: none;
     color: white;
@@ -296,7 +293,7 @@ html, body {
 .btn-picking { background-color: #fd7e14; }
 
 /* ================================== */
-/* NOVOS ESTILOS PARA A GUIA LATERAL  */
+/* GUIA LATERAL DE PERFIL             */
 /* ================================== */
 .profile-overlay {
     position: fixed;
@@ -478,6 +475,47 @@ html, body {
 }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 .hidden { display: none !important; }
+
+/* ================================== */
+/* ESTILOS PARA TELA DE HISTÓRICO     */
+/* ================================== */
+.history-card {
+    background-color: var(--history-background-color);
+    border: 1px solid var(--history-border-color);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.history-card .card-header {
+    color: var(--history-header-color);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--history-border-color);
+}
+
+.history-card .card-header p:first-child {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--primary-color);
+}
+.history-card .card-header p:first-child span {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.history-card .card-body .product-desc {
+    font-size: 18px;
+    font-weight: 600;
+    text-align: center;
+    padding: 10px 0;
+}
+
+.history-card .card-footer .product-code {
+    background-color: #e2e8f0;
+}
 
 /* MEDIA QUERIES */
 @media (max-width: 768px) {
