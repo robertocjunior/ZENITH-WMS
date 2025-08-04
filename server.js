@@ -7,6 +7,7 @@ const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const logger = require('./logger'); // Importa nosso logger customizado
 
 const app = express();
 app.use(express.json());
@@ -22,16 +23,16 @@ let systemBearerToken = null;
 async function getSystemBearerToken(forceRefresh = false) {
     if (systemBearerToken && !forceRefresh) return systemBearerToken;
     try {
-        console.log("Autenticando o sistema para obter Bearer Token...");
+        logger.http("Autenticando o sistema para obter Bearer Token...");
         const response = await axios.post(`${SANKHYA_API_URL}/login`, {}, {
             headers: { 'appkey': process.env.SANKHYA_APPKEY, 'username': process.env.SANKHYA_USERNAME, 'password': process.env.SANKHYA_PASSWORD, 'token': process.env.SANKHYA_TOKEN }
         });
         systemBearerToken = response.data.bearerToken;
         if (!systemBearerToken) throw new Error("Falha ao obter Bearer Token do sistema.");
-        console.log("Token de sistema obtido com sucesso.");
+        logger.info("Token de sistema obtido com sucesso.");
         return systemBearerToken;
     } catch (error) {
-        console.error("ERRO CRÍTICO: Não foi possível obter o Bearer Token do sistema.", error.message);
+        logger.error(`ERRO CRÍTICO ao obter Bearer Token: ${error.message}`);
         systemBearerToken = null;
         throw new Error("Falha na autenticação do servidor proxy.");
     }
@@ -46,7 +47,7 @@ async function callSankhyaService(serviceName, requestBody) {
         return response.data;
     } catch (error) {
         if (error.response && error.response.status === 401) {
-            console.log("Token de sistema possivelmente expirado. Tentando renovar...");
+            logger.warn("Token de sistema possivelmente expirado. Tentando renovar...");
             token = await getSystemBearerToken(true);
             const response = await axios.post(url, { requestBody }, { headers: { 'Authorization': `Bearer ${token}` } });
             return response.data;
@@ -58,9 +59,15 @@ async function callSankhyaService(serviceName, requestBody) {
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    if (token == null) return res.sendStatus(401);
+    if (token == null) {
+        logger.warn(`Acesso não autorizado à rota ${req.originalUrl} - Token não fornecido.`);
+        return res.sendStatus(401);
+    }
     jwt.verify(token, JWT_SECRET, (err, userSession) => {
-        if (err) return res.sendStatus(403);
+        if (err) {
+            logger.warn(`Tentativa de acesso com token inválido/expirado para rota ${req.originalUrl}. Erro: ${err.message}`);
+            return res.sendStatus(403);
+        }
         req.userSession = userSession;
         next();
     });
@@ -71,6 +78,7 @@ const authenticateToken = (req, res, next) => {
 // ======================================================
 app.post('/login', async (req, res) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
+    logger.http(`Tentativa de login para o usuário: ${username}`);
     try {
         const loginResponse = await callSankhyaService("MobileLoginSP.login", { NOMUSU: { "$": username.toUpperCase() }, INTERNO: { "$": password } });
         if (loginResponse.status !== "1") throw new Error(loginResponse.statusMessage || 'Credenciais de operador inválidas.');
@@ -88,6 +96,7 @@ app.post('/login', async (req, res) => {
                 if (deviceCheckResponse.responseBody.rows[0][0] === 'S') {
                     deviceIsAuthorized = true;
                 } else {
+                    logger.warn(`Login bloqueado para usuário ${username}. Dispositivo ${clientDeviceToken} inativo.`);
                     return res.status(403).json({ message: 'Este dispositivo está registrado, mas não está ativo. Contate um administrador.', deviceToken: clientDeviceToken });
                 }
             }
@@ -100,37 +109,47 @@ app.post('/login', async (req, res) => {
                 entityName: "AD_DISPAUT", fields: ["CODUSU", "DEVICETOKEN", "DESCRDISP", "ATIVO", "DHGER"],
                 records: [{ values: { "0": codUsu, "1": finalDeviceToken, "2": descrDisp, "3": "N", "4": new Date().toLocaleDateString('pt-BR') } }]
             });
+            logger.info(`Dispositivo novo registrado para usuário ${username}. Token: ${finalDeviceToken}`);
             return res.status(403).json({ message: 'Dispositivo novo detectado e registrado. Solicite a um administrador para ativá-lo.', deviceToken: finalDeviceToken });
         }
 
         const sessionPayload = { username: username, codusu: codUsu };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
+        logger.info(`Usuário ${username} logado com sucesso.`);
         res.json({ sessionToken, username, codusu: codUsu, deviceToken: finalDeviceToken });
     } catch (error) {
         const errorMessage = error.response ? (error.response.data.statusMessage || JSON.stringify(error.response.data)) : error.message;
+        logger.error(`Falha no login para ${username}: ${errorMessage}`);
         res.status(401).json({ message: errorMessage || 'Erro durante o processo de login.' });
     }
 });
 
-app.post('/logout', (req, res) => res.status(200).json({ message: 'Logout bem-sucedido.' }));
+app.post('/logout', authenticateToken, (req, res) => {
+    const { username } = req.userSession;
+    logger.info(`Usuário ${username} realizou logout.`);
+    res.status(200).json({ message: 'Logout bem-sucedido.' })
+});
 
 // ======================================================
 // NOVAS ROTAS ESPECÍFICAS DA API
 // ======================================================
 
 app.post('/get-warehouses', authenticateToken, async (req, res) => {
+    logger.http(`Usuário ${req.userSession.username} solicitou a lista de armazéns.`);
     try {
         const sql = "SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM ORDER BY CODARM";
         const data = await callSankhyaService("DbExplorerSP.executeQuery", { sql });
         if (data.status !== '1') throw new Error(data.statusMessage);
         res.json(data.responseBody.rows);
     } catch (error) {
+        logger.error(`Erro em /get-warehouses: ${error.message}`);
         res.status(500).json({ message: error.message });
     }
 });
 
 app.post('/search-items', authenticateToken, async (req, res) => {
     const { codArm, filtro } = req.body;
+    logger.http(`Usuário ${req.userSession.username} buscou por '${filtro || 'todos'}' no armazém ${codArm}.`);
     if (!codArm) return res.status(400).json({ message: "O código do armazém é obrigatório." });
     try {
         let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
@@ -161,13 +180,15 @@ app.post('/search-items', authenticateToken, async (req, res) => {
         if (data.status !== "1") throw new Error(data.statusMessage);
         res.json(data.responseBody.rows);
     } catch (error) {
+        logger.error(`Erro em /search-items para o usuário ${req.userSession.username}: ${error.message}`);
         res.status(500).json({ message: error.message });
     }
 });
 
 app.post('/get-item-details', authenticateToken, async (req, res) => {
+    const { codArm, sequencia } = req.body;
+    logger.http(`Usuário ${req.userSession.username} solicitou detalhes da sequência ${sequencia} no armazém ${codArm}.`);
     try {
-        const { codArm, sequencia } = req.body;
         const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
         const data = await callSankhyaService("DbExplorerSP.executeQuery", { sql });
         if (data.status === "1" && data.responseBody.rows.length > 0) {
@@ -176,26 +197,29 @@ app.post('/get-item-details', authenticateToken, async (req, res) => {
             throw new Error('Produto não encontrado ou erro na consulta.');
         }
     } catch (error) {
+        logger.error(`Erro em /get-item-details para o usuário ${req.userSession.username}: ${error.message}`);
         res.status(500).json({ message: error.message });
     }
 });
 
-// ROTA ADICIONADA
 app.post('/get-picking-locations', authenticateToken, async (req, res) => {
+    const { codarm, codprod, sequencia } = req.body;
+    logger.http(`Usuário ${req.userSession.username} solicitou locais de picking para o produto ${codprod}.`);
     try {
-        const { codarm, codprod, sequencia } = req.body;
         const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${codarm} AND ENDE.CODPROD = ${codprod} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sequencia} ORDER BY ENDE.SEQEND`;
         const data = await callSankhyaService("DbExplorerSP.executeQuery", { sql });
         if (data.status !== '1') throw new Error(data.statusMessage);
         res.json(data.responseBody.rows);
     } catch (error) {
+        logger.error(`Erro em /get-picking-locations para o usuário ${req.userSession.username}: ${error.message}`);
         res.status(500).json({ message: error.message });
     }
 });
 
 app.post('/get-history', authenticateToken, async (req, res) => {
+    const { username, codusu } = req.userSession;
+    logger.http(`Usuário ${username} solicitou seu histórico de hoje.`);
     try {
-        const { codusu } = req.userSession;
         const hoje = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: '2-digit', day: '2-digit' });
         const sql = `
             WITH RankedItems AS (
@@ -209,13 +233,15 @@ app.post('/get-history', authenticateToken, async (req, res) => {
         if (data.status !== "1") throw new Error(data.statusMessage || "Falha ao carregar o histórico.");
         res.json(data.responseBody.rows);
     } catch (error) {
+        logger.error(`Erro em /get-history para o usuário ${username}: ${error.message}`);
         res.status(500).json({ message: error.message });
     }
 });
 
 app.post('/execute-transaction', authenticateToken, async (req, res) => {
     const { type, payload } = req.body;
-    const { codusu } = req.userSession;
+    const { username, codusu } = req.userSession;
+    logger.http(`Usuário ${username} iniciou uma transação do tipo: ${type}.`);
     
     try {
         const hoje = new Date().toLocaleDateString('pt-BR');
@@ -227,6 +253,7 @@ app.post('/execute-transaction', authenticateToken, async (req, res) => {
             throw new Error(cabecalhoData.statusMessage || "Falha ao criar cabeçalho da transação.");
         }
         const seqBai = cabecalhoData.responseBody.result[0][0];
+        logger.info(`Cabeçalho da transação ${seqBai} criado para o usuário ${username}.`);
 
         let recordsToSave = [];
         if (type === 'baixa') {
@@ -238,7 +265,6 @@ app.post('/execute-transaction', authenticateToken, async (req, res) => {
         } else if (type === 'transferencia' || type === 'picking') {
             const { codarm, sequencia, codprod } = payload.origem;
             const { armazemDestino, enderecoDestino, quantidade } = payload.destino;
-
             const checkSql = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = ${enderecoDestino} AND CODARM = ${armazemDestino}`;
             const checkData = await callSankhyaService("DbExplorerSP.executeQuery", { sql: checkSql });
             if (checkData.status !== '1') throw new Error("Falha ao verificar o endereço de destino.");
@@ -261,6 +287,7 @@ app.post('/execute-transaction', authenticateToken, async (req, res) => {
             const itemData = await callSankhyaService("DatasetSP.save", { ...record, standAlone: false, records: [{ values: record.values }] });
             if (itemData.status !== "1") throw new Error(itemData.statusMessage || "Falha ao inserir item da transação.");
         }
+        logger.info(`${recordsToSave.length} item(ns) salvos para a transação ${seqBai}.`);
 
         const pollSql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
         let isPopulated = false;
@@ -273,15 +300,18 @@ app.post('/execute-transaction', authenticateToken, async (req, res) => {
             await new Promise(resolve => setTimeout(resolve, 500));
         }
         if (!isPopulated) throw new Error("Timeout: O sistema não populou o CODPROD a tempo.");
+        logger.info(`Polling de CODPROD bem-sucedido para a transação ${seqBai}.`);
 
         const stpData = await callSankhyaService("ActionButtonsSP.executeSTP", {
             stpCall: { actionID: "20", procName: "NIC_STP_BAIXA_END", rootEntity: "AD_BXAEND", rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } }
         });
         if (stpData.status !== "1" && stpData.status !== "2") throw new Error(stpData.statusMessage || "Falha ao executar a procedure de baixa.");
-
+        
+        logger.info(`Transação ${type} (SEQBAI: ${seqBai}) finalizada com sucesso para o usuário ${username}.`);
         res.json({ message: stpData.statusMessage || 'Operação concluída com sucesso!' });
 
     } catch (error) {
+        logger.error(`Erro em /execute-transaction para o usuário ${username}: ${error.message}`);
         res.status(500).json({ message: error.message });
     }
 });
@@ -290,8 +320,10 @@ app.post('/execute-transaction', authenticateToken, async (req, res) => {
 // SERVIR ARQUIVOS DO FRONTEND
 // ======================================================
 app.use(express.static(path.join(__dirname, '')));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
-app.listen(PORT, HOST, () => console.log(`\n✅ Servidor completo (Proxy + Frontend) rodando em http://localhost:${PORT}`));
+app.listen(PORT, HOST, () => logger.info(`✅ Servidor rodando em http://localhost:${PORT}`));
