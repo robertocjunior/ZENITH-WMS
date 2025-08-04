@@ -23,239 +23,52 @@ const Device = {
 };
 
 // ======================================================
-// GERENCIAMENTO DE INATIVIDADE
+// LÓGICA DE API CENTRALIZADA
 // ======================================================
-const InactivityTimer = {
-    timeoutID: null,
-    timeoutInMilliseconds: 3600 * 1000,
-    start: function() {
-        this.clear();
-        this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds);
-    },
-    reset: function() { this.start(); },
-    clear: function() { if (this.timeoutID) clearTimeout(this.timeoutID); },
-    forceLogout: function() { handleLogout(true); }
-};
-const activityEvents = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
-let throttleTimeout = null;
-const throttledReset = () => {
-    if (throttleTimeout) return;
-    throttleTimeout = setTimeout(() => {
-        InactivityTimer.reset();
-        throttleTimeout = null;
-    }, 500);
-};
-function setupActivityListeners() { activityEvents.forEach(event => window.addEventListener(event, throttledReset)); }
-function removeActivityListeners() { activityEvents.forEach(event => window.removeEventListener(event, throttledReset)); }
-
-// ======================================================
-// FUNÇÕES AUXILIARES E DE UI
-// ======================================================
-function removerAcentos(texto) {
-    if (!texto) return '';
-    return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-function parseSankhyaError(rawMessage) {
-    if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.includes('<')) {
-        return rawMessage || 'Ocorreu um erro desconhecido.';
-    }
-    try {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = rawMessage;
-        const textContent = tempDiv.textContent || tempDiv.innerText;
-        const motivoMatch = textContent.match(/Motivo:\s*([\s\S]+?)(?=Solução:|Informações para o Implantador|$)/);
-        const solucaoMatch = textContent.match(/Solução:\s*([\s\S]+?)(?=Informações para o Implantador|$)/);
-        const motivo = motivoMatch ? motivoMatch[1].trim() : '';
-        const solucao = solucaoMatch ? solucaoMatch[1].trim() : '';
-        if (motivo || solucao) {
-            let formattedMessage = '';
-            if (motivo) formattedMessage += `<p style="margin-bottom:10px;"><strong>Motivo:</strong> ${motivo}</p>`;
-            if (solucao) formattedMessage += `<p><strong>Solução:</strong> ${solucao}</p>`;
-            return formattedMessage;
-        }
-        const cleanedText = textContent.replace(/ORA-\d+.*|Regra Personalizada:/g, '').trim();
-        return cleanedText || "Ocorreu um erro na operação.";
-    } catch (e) {
-        return rawMessage.replace(/<[^>]*>/g, ' ');
-    }
-}
-function switchView(viewName) {
-    const loginPage = document.getElementById('login-page');
-    const appContainer = document.getElementById('app-container');
-    const mainPage = document.getElementById('main-page');
-    const detailsPage = document.getElementById('details-page');
-    const historyPage = document.getElementById('history-page'); 
-
-    if (viewName === 'login') {
-        loginPage.classList.add('active');
-        loginPage.classList.remove('hidden');
-        appContainer.classList.add('hidden');
-    } else {
-        loginPage.classList.remove('active');
-        loginPage.classList.add('hidden');
-        appContainer.classList.remove('hidden');
-
-        mainPage.classList.remove('active');
-        detailsPage.classList.remove('active');
-        historyPage.classList.remove('active');
-
-        if (viewName === 'main') {
-            mainPage.classList.add('active');
-        } else if (viewName === 'details') {
-            detailsPage.classList.add('active');
-        } else if (viewName === 'history') {
-            historyPage.classList.add('active');
-        }
-    }
-}
-function openConfirmModal(message, title = 'Aviso') {
-    document.getElementById('modal-confirm-title').textContent = title;
-    document.getElementById('modal-confirm-message').innerHTML = parseSankhyaError(message);
-    document.getElementById('confirm-modal').classList.remove('hidden');
-}
-function closeConfirmModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
-function openBaixaModal() {
-    if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
-    const maxQtd = currentItemDetails.quantidade;
-    const qtdInput = document.getElementById('modal-qtd-baixa');
-    qtdInput.value = maxQtd;
-    qtdInput.max = maxQtd;
-    document.getElementById('modal-qtd-disponivel').textContent = currentItemDetails.qtdCompleta;
-    document.getElementById('baixa-modal').classList.remove('hidden');
-}
-function closeBaixaModal() { document.getElementById('baixa-modal').classList.add('hidden'); }
-function openTransferModal() {
-    if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
-    const maxQtd = currentItemDetails.quantidade;
-    const qtdInput = document.getElementById('modal-qtd-transfer');
-    qtdInput.value = maxQtd;
-    qtdInput.max = maxQtd;
-    document.getElementById('modal-qtd-disponivel-transfer').textContent = currentItemDetails.qtdCompleta;
-    document.getElementById('modal-enddes-transfer').value = '';
-    document.getElementById('transfer-modal').classList.remove('hidden');
-}
-function closeTransferModal() { document.getElementById('transfer-modal').classList.add('hidden'); }
-async function openPickingModal() {
-    if (!currentItemDetails) return openConfirmModal("Erro: Nenhum item selecionado.");
-    const selectPicking = document.getElementById('modal-seqend-picking');
-    selectPicking.innerHTML = '<option value="">Buscando locais...</option>';
-    selectPicking.disabled = true;
-    document.getElementById('modal-qtd-disponivel-picking').textContent = currentItemDetails.qtdCompleta;
-    const qtdInput = document.getElementById('modal-qtd-picking');
-    qtdInput.value = currentItemDetails.quantidade;
-    qtdInput.max = currentItemDetails.quantidade;
-    document.getElementById('picking-modal').classList.remove('hidden');
-
-    showLoading(true);
-    try {
-        const { codarm, codprod, sequencia } = currentItemDetails;
-        const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${codarm} AND ENDE.CODPROD = ${codprod} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sequencia} ORDER BY ENDE.SEQEND`;
-        const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
-        if (data.status !== '1') throw new Error(data.statusMessage || "Não foi possível carregar os locais de picking.");
-        const locations = data.responseBody.rows;
-        selectPicking.innerHTML = '';
-        if (locations.length === 0) {
-            selectPicking.innerHTML = '<option value="">Nenhum local de picking encontrado</option>';
-            return;
-        }
-        selectPicking.innerHTML = '<option value="">Selecione um destino</option>';
-        locations.forEach(location => {
-            const [seqEnd, descrProd] = location;
-            const option = document.createElement('option');
-            option.value = seqEnd;
-            option.textContent = `${seqEnd} - ${descrProd}`;
-            selectPicking.appendChild(option);
-        });
-        selectPicking.disabled = false;
-    } catch (error) {
-        openConfirmModal(error.message, "Erro");
-        closePickingModal();
-    } finally {
-        showLoading(false);
-    }
-}
-function closePickingModal() { document.getElementById('picking-modal').classList.add('hidden'); }
-const loading = document.getElementById('loading');
-function showLoading(show) { loading.classList.toggle('hidden', !show); }
-
-function openProfilePanel() {
-    document.getElementById('profile-overlay').classList.remove('hidden');
-    document.getElementById('profile-overlay').classList.add('active');
-    document.getElementById('profile-panel').classList.add('active');
-    
-    const codUsu = Session.getCodUsu();
-    const username = Session.getUsername();
-    document.getElementById('profile-user-info').textContent = `${codUsu} - ${username}`;
-    document.getElementById('session-hash').textContent = Session.getToken();
-    feather.replace();
-}
-function closeProfilePanel() {
-    document.getElementById('profile-overlay').classList.remove('active');
-    document.getElementById('profile-panel').classList.remove('active');
-    setTimeout(() => {
-        document.getElementById('profile-overlay').classList.add('hidden');
-    }, 300);
-}
-
-// ======================================================
-// LÓGICA DE API
-// ======================================================
-async function authenticatedFetch(serviceName, requestBody) {
+async function authenticatedFetch(endpoint, body = {}) {
     const token = Session.getToken();
     if (!token) {
         handleLogout();
         throw new Error("Sessão inválida. Por favor, faça login novamente.");
     }
-    const response = await fetch(`${PROXY_URL}/api`, {
+    const response = await fetch(`${PROXY_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ serviceName, requestBody })
+        body: JSON.stringify(body)
     });
     const data = await response.json();
-    if (response.status === 401 || response.status === 403) {
-        handleLogout(true);
-        throw new Error(data.message || "Sessão expirada. Por favor, faça login novamente.");
-    }
     if (!response.ok) {
-        throw new Error(data.statusMessage || data.message || "Erro na comunicação com o servidor.");
+        if (response.status === 401 || response.status === 403) handleLogout(true);
+        throw new Error(data.message || "Erro na comunicação com o servidor.");
     }
     return data;
 }
 
 // ======================================================
-// FUNÇÕES PRINCIPAIS
+// FUNÇÕES PRINCIPAIS (AGORA SIMPLIFICADAS)
 // ======================================================
-
 async function handleLogin() {
     const usernameInput = document.getElementById('login-username');
     const passwordInput = document.getElementById('login-password');
     const username = usernameInput.value.trim();
     const password = passwordInput.value.trim();
-
     if (!username || !password) return openConfirmModal("Por favor, preencha o usuário e a senha.");
     
     showLoading(true);
     try {
         const deviceToken = Device.getToken();
-
         const response = await fetch(`${PROXY_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password, deviceToken })
         });
-
         const data = await response.json();
-        
-        // MODIFICADO: Lógica para tratar o erro 403 e ainda salvar o token
         if (!response.ok) {
-            // Se o erro é 403 (dispositivo novo/inativo), e o corpo da resposta tem um deviceToken
             if (response.status === 403 && data.deviceToken) {
-                Device.saveToken(data.deviceToken); // Salva o token para a próxima tentativa
+                Device.saveToken(data.deviceToken);
             }
             throw new Error(data.message);
         }
-
-        // Se chegou aqui, o login foi 100% bem-sucedido
         Session.saveToken(data.sessionToken);
         Session.saveUsername(data.username);
         Session.saveCodUsu(data.codusu);
@@ -266,11 +79,8 @@ async function handleLogin() {
         InactivityTimer.start();
         await fetchAndPopulateWarehouses();
         feather.replace();
-
     } catch (error) {
-        Session.clearToken();
-        Session.clearUsername();
-        Session.clearCodUsu();
+        Session.clearToken(); Session.clearUsername(); Session.clearCodUsu();
         openConfirmModal(error.message, "Falha no Login");
     } finally {
         showLoading(false);
@@ -278,38 +88,23 @@ async function handleLogin() {
     }
 }
 
-
 async function handleLogout(fromInactivity = false) {
     closeProfilePanel();
     const token = Session.getToken();
     if (token) {
-        try {
-            await fetch(`${PROXY_URL}/logout`, { 
-                method: 'POST', 
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+        try { await fetch(`${PROXY_URL}/logout`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
         } catch(e) { console.error("Falha ao notificar servidor do logout:", e); }
     }
-    Session.clearToken();
-    Session.clearUsername();
-    Session.clearCodUsu();
-    // Device.clearToken(); // Opcional: Descomente se quiser que o dispositivo peça autorização de novo após um logout manual.
-    InactivityTimer.clear();
-    removeActivityListeners();
+    Session.clearToken(); Session.clearUsername(); Session.clearCodUsu();
+    InactivityTimer.clear(); removeActivityListeners();
     switchView('login');
-    if (fromInactivity) {
-        openConfirmModal("Sua sessão expirou por inatividade. Por favor, faça login novamente.", "Sessão Expirada");
-    }
+    if (fromInactivity) openConfirmModal("Sua sessão expirou por inatividade.", "Sessão Expirada");
 }
 
-// ... (O RESTO DO SEU CÓDIGO PERMANECE IGUAL) ...
-async function fetchAndPopulateWarehouses(){/*...função original...*/
+async function fetchAndPopulateWarehouses() {
     showLoading(true);
     try {
-        const sql = "SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM ORDER BY CODARM";
-        const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
-        if (data.status !== '1') throw new Error(data.statusMessage);
-        const armazens = data.responseBody.rows;
+        const armazens = await authenticatedFetch('/get-warehouses');
         const selectPrincipal = document.getElementById('armazem-select');
         const selectModal = document.getElementById('modal-armdes-transfer');
         selectPrincipal.innerHTML = '<option value="">Selecione um Armazém</option>';
@@ -328,120 +123,45 @@ async function fetchAndPopulateWarehouses(){/*...função original...*/
         showLoading(false);
     }
 }
-async function handleConsulta(){/*...função original...*/
+
+async function handleConsulta() {
     showLoading(true);
+    document.getElementById('results-container').innerHTML = '';
+    document.getElementById('empty-state').classList.add('hidden');
     try {
         const codArm = document.getElementById('armazem-select').value;
         if (!codArm) throw new Error("Por favor, selecione um armazém para iniciar a busca.");
-        const resultsContainer = document.getElementById('results-container');
-        resultsContainer.innerHTML = '';
-        document.getElementById('empty-state').classList.add('hidden');
-        const filtroInput = document.getElementById('filtro-sequencia').value.trim();
-        let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
-        let orderByClause = '';
-        if (filtroInput) {
-            if (/^\d+$/.test(filtroInput)) {
-                sqlFinal += ` AND (ENDE.SEQEND LIKE '${filtroInput}%' OR ENDE.CODPROD = ${filtroInput} OR ENDE.CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroInput} AND CODARM = ${codArm} AND ROWNUM = 1))`;
-                orderByClause = ` ORDER BY CASE WHEN ENDE.SEQEND = ${filtroInput} THEN 0 ELSE 1 END, ENDE.ENDPIC DESC, ENDE.DATVAL ASC`;
-            } else {
-                const palavrasChave = removerAcentos(filtroInput).split(' ').filter(p => p.length > 0);
-                const condicoes = palavrasChave.map(palavra => {
-                    const palavraUpper = palavra.toUpperCase();
-                    const cleanDescrprod = "TRANSLATE(UPPER(PRO.DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
-                    const cleanMarca = "TRANSLATE(UPPER(PRO.MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
-                    return `(${cleanDescrprod} LIKE '%${palavraUpper}%' OR ${cleanMarca} LIKE '%${palavraUpper}%')`;
-                });
-                if (condicoes.length > 0) sqlFinal += ` AND ${condicoes.join(' AND ')}`;
-                orderByClause = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
-            }
-        } else {
-            orderByClause = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
-        }
-        sqlFinal += orderByClause;
-        const data = await authenticatedFetch("DbExplorerSP.executeQuery", { "sql": sqlFinal });
-        if (data.status !== "1") throw new Error(data.statusMessage);
-        renderizarCards(data.responseBody.rows);
+        const filtro = document.getElementById('filtro-sequencia').value;
+        const rows = await authenticatedFetch('/search-items', { codArm, filtro });
+        renderizarCards(rows);
     } catch(error) {
         openConfirmModal(error.message, "Erro na Consulta");
     } finally {
         showLoading(false);
     }
 }
-async function fetchAndShowDetails(sequencia){/*...função original...*/
+
+async function fetchAndShowDetails(sequencia) {
     showLoading(true);
     try {
         const codArm = document.getElementById('armazem-select').value;
-        const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
-        const data = await authenticatedFetch("DbExplorerSP.executeQuery", { "sql": sql });
-        if (data.status === "1" && data.responseBody.rows.length > 0) {
-            populateDetails(data.responseBody.rows[0]);
-            switchView('details');
-        } else {
-            throw new Error('Produto não encontrado ou erro na consulta.');
-        }
+        const details = await authenticatedFetch('/get-item-details', { codArm, sequencia });
+        populateDetails(details);
+        switchView('details');
     } catch (error) {
         openConfirmModal(error.message, "Erro");
     } finally {
         showLoading(false);
     }
 }
-async function showHistoryPage(){/*...função original...*/
+
+async function showHistoryPage() {
     closeProfilePanel();
     showLoading(true);
     switchView('history');
-
     try {
-        const codUsu = Session.getCodUsu();
-        if (!codUsu) {
-            throw new Error("Código do usuário não encontrado na sessão.");
-        }
-        const hoje = new Date().toLocaleDateString('pt-BR', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-
-        const sql = `
-            WITH RankedItems AS (
-                SELECT 
-                    BXA.SEQBAI,
-                    TO_CHAR(BXA.DATGER, 'HH24:MI:SS') AS HORA,
-                    BXA.DATGER,
-                    IBX.CODARM,
-                    IBX.SEQEND,
-                    IBX.ARMDES,
-                    IBX.ENDDES,
-                    IBX.CODPROD,
-                    IBX.SEQITE,
-                    PRO.DESCRPROD,
-                    ROW_NUMBER() OVER(PARTITION BY BXA.SEQBAI ORDER BY IBX.SEQITE DESC) as rn
-                FROM AD_BXAEND BXA
-                JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI
-                LEFT JOIN TGFPRO PRO ON IBX.CODPROD = PRO.CODPROD
-                WHERE BXA.USUGER = ${codUsu}
-                AND TRUNC(BXA.DATGER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
-            )
-            SELECT
-                SEQBAI,
-                HORA,
-                CODARM,
-                SEQEND,
-                ARMDES,
-                ENDDES,
-                CODPROD,
-                DESCRPROD
-            FROM RankedItems
-            WHERE rn = 1
-            ORDER BY DATGER DESC`;
-
-        const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
-
-        if (data.status !== "1") {
-            throw new Error(data.statusMessage || "Falha ao carregar o histórico.");
-        }
-
-        renderHistoryCards(data.responseBody.rows);
-
+        const rows = await authenticatedFetch('/get-history');
+        renderHistoryCards(rows);
     } catch (error) {
         openConfirmModal(error.message, "Erro ao carregar Histórico");
         switchView('main');
@@ -449,158 +169,22 @@ async function showHistoryPage(){/*...função original...*/
         showLoading(false);
     }
 }
-function renderHistoryCards(rows){/*...função original...*/
-    const container = document.getElementById('history-container');
-    const emptyState = document.getElementById('history-empty-state');
-    container.innerHTML = '';
 
-    if (!rows || rows.length === 0) {
-        emptyState.classList.remove('hidden');
-        return;
+async function handleBaixa() {
+    const qtdBaixar = parseInt(document.getElementById('modal-qtd-baixa').value, 10);
+    if (isNaN(qtdBaixar) || qtdBaixar <= 0 || qtdBaixar > currentItemDetails.quantidade) {
+        return openConfirmModal("Quantidade para baixa é inválida.");
     }
-
-    emptyState.classList.add('hidden');
-
-    rows.forEach(row => {
-        const [seqbai, hora, codarm, seqend, armdes, enddes, codprod, descrprod] = row;
-
-        const card = document.createElement('div');
-        card.className = 'history-card';
-
-        let productHtml = `
-            <div class="product-info">
-                ${descrprod || 'Produto ' + codprod}
-                <span class="product-code">Cód: ${codprod}</span>
-            </div>`;
-        
-        let movementHtml = '';
-        if (armdes && enddes) {
-            movementHtml = `
-                <div class="history-movement">
-                    <div class="origin">
-                        <div class="label">Origem</div>
-                        <div>${codarm} &rarr; ${seqend}</div>
-                    </div>
-                    <i data-feather="arrow-right" class="arrow"></i>
-                    <div class="destination">
-                        <div class="label">Destino</div>
-                        <div>${armdes} &rarr; ${enddes}</div>
-                    </div>
-                </div>`;
-        } else {
-            movementHtml = `
-                <div class="history-location">
-                    <div class="location">
-                        <div class="label">Local da Baixa</div>
-                        <div>${codarm} &rarr; ${seqend}</div>
-                    </div>
-                </div>`;
-        }
-
-        card.innerHTML = `
-            <div class="card-header">
-                <p>Operação: <span>${seqbai}</span></p>
-                <p>${hora}</p>
-            </div>
-            <div class="card-body">
-                ${codprod ? productHtml : ''}
-                ${movementHtml}
-            </div>
-        `;
-        container.appendChild(card);
-    });
-
-    feather.replace();
-}
-async function pollForCodProdUpdate(seqBai, expectedRecords, timeout = 20000, interval = 500){/*...função original...*/
-    const startTime = Date.now();
-    const sql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
-
-    while (Date.now() - startTime < timeout) {
-        try {
-            const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
-            if (data.status === '1' && data.responseBody.rows.length > 0) {
-                const populatedCount = parseInt(data.responseBody.rows[0][0], 10);
-                if (populatedCount >= expectedRecords) {
-                    console.log(`Campo CODPROD populado com sucesso após ${Date.now() - startTime}ms.`);
-                    return true;
-                }
-            }
-        } catch (error) {
-            console.error("Erro durante a verificação (polling) do CODPROD:", error);
-        }
-        await new Promise(resolve => setTimeout(resolve, interval));
-    }
-
-    throw new Error("O sistema não populou o CODPROD a tempo (timeout). A operação pode não ter sido concluída corretamente.");
-}
-async function doTransaction(records){/*...função original...*/
-    const hoje = new Date().toLocaleDateString('pt-BR');
-    const codUsu = Session.getCodUsu();
-    if (!codUsu) throw new Error("Código do usuário não encontrado na sessão. Faça login novamente.");
-
-    const cabecalhoBody = { 
-        entityName: "AD_BXAEND", 
-        fields: ["SEQBAI", "DATGER", "USUGER"], 
-        records: [{ values: { "1": hoje, "2": codUsu } }] 
-    };
-    const cabecalhoData = await authenticatedFetch("DatasetSP.save", cabecalhoBody);
-    if (cabecalhoData.status !== "1" || !cabecalhoData.responseBody.result?.[0]?.[0]) {
-        throw new Error(cabecalhoData.statusMessage || "Falha ao criar cabeçalho da baixa.");
-    }
-    const seqBai = cabecalhoData.responseBody.result[0][0];
-
-    for (const record of records) {
-        record.values["1"] = seqBai;
-        const itemBody = { 
-            entityName: record.entityName, 
-            standAlone: false, 
-            fields: record.fields, 
-            records: [{ values: record.values }] 
-        };
-        const itemData = await authenticatedFetch("DatasetSP.save", itemBody);
-        if (itemData.status !== "1") {
-            throw new Error(itemData.statusMessage || "Falha ao inserir item da baixa.");
-        }
-    }
-
-    try {
-        await pollForCodProdUpdate(seqBai, records.length);
-    } catch (error) {
-        openConfirmModal(error.message, "Falha na Sincronização");
-        return; 
-    }
-
-    const stpBody = { 
-        stpCall: { 
-            actionID: "20", 
-            procName: "NIC_STP_BAIXA_END", 
-            rootEntity: "AD_BXAEND", 
-            rows: { row: [{ field: [{ fieldName: "SEQBAI", "$": seqBai }] }] } 
-        } 
-    };
-    const stpData = await authenticatedFetch("ActionButtonsSP.executeSTP", stpBody);
-    if (stpData.status !== "1" && stpData.status !== "2") {
-        throw new Error(stpData.statusMessage || "Falha ao executar a procedure de baixa.");
-    }
-    
-    if (stpData.statusMessage) {
-        openConfirmModal(stpData.statusMessage, 'Sucesso!');
-    }
-}
-async function handleBaixa(){/*...função original...*/
+    closeBaixaModal();
     showLoading(true);
     try {
-        const qtdBaixar = parseInt(document.getElementById('modal-qtd-baixa').value, 10);
-        const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
-        if (isNaN(qtdBaixar) || qtdBaixar <= 0 || qtdBaixar > qtdDisponivel) throw new Error("Quantidade para baixa é inválida.");
-        closeBaixaModal();
-        const baixaRecord = {
-            entityName: "AD_IBXEND",
-            fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
-            values: { "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": qtdBaixar.toString() }
+        const payload = {
+            codarm: currentItemDetails.codarm,
+            sequencia: currentItemDetails.sequencia,
+            quantidade: qtdBaixar
         };
-        await doTransaction([baixaRecord]);
+        const result = await authenticatedFetch('/execute-transaction', { type: 'baixa', payload });
+        openConfirmModal(result.message, 'Sucesso!');
         switchView('main');
         await handleConsulta();
     } catch (error) {
@@ -609,34 +193,25 @@ async function handleBaixa(){/*...função original...*/
         showLoading(false);
     }
 }
-async function handleTransfer(){/*...função original...*/
+
+async function handleTransfer() {
+    const quantidade = parseInt(document.getElementById('modal-qtd-transfer').value, 10);
+    const armazemDestino = document.getElementById('modal-armdes-transfer').value;
+    const enderecoDestino = document.getElementById('modal-enddes-transfer').value.trim();
+
+    if (isNaN(quantidade) || quantidade <= 0 || quantidade > currentItemDetails.quantidade) return openConfirmModal("Quantidade inválida.");
+    if (!armazemDestino) return openConfirmModal("Selecione um armazém de destino.");
+    if (!enderecoDestino) return openConfirmModal("Insira o endereço de destino.");
+    
+    closeTransferModal();
     showLoading(true);
     try {
-        const quantidade = parseInt(document.getElementById('modal-qtd-transfer').value, 10);
-        const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
-        const enderecoDestino = document.getElementById('modal-enddes-transfer').value.trim();
-        const armazemDestino = document.getElementById('modal-armdes-transfer').value;
-        if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) throw new Error("Quantidade para transferência é inválida.");
-        if (!armazemDestino) throw new Error("Selecione um armazém de destino.");
-        if (!enderecoDestino) throw new Error("Insira o endereço de destino.");
-        closeTransferModal();
-        const sqlCheck = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = ${enderecoDestino} AND CODARM = ${armazemDestino}`;
-        const checkData = await authenticatedFetch("DbExplorerSP.executeQuery", { sql: sqlCheck });
-        if (checkData.status !== '1') throw new Error("Falha ao verificar o endereço de destino.");
-        const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
-        const records = [];
-        if (destinationItem && destinationItem[0] === currentItemDetails.codprod) {
-            const [destCodProd, destQtd] = destinationItem;
-            records.push({
-                entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
-                values: { "2": armazemDestino, "3": enderecoDestino, "4": destQtd.toString() }
-            });
-        }
-        records.push({
-            entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
-            values: { "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
-        });
-        await doTransaction(records);
+        const payload = {
+            origem: currentItemDetails,
+            destino: { armazemDestino, enderecoDestino, quantidade }
+        };
+        const result = await authenticatedFetch('/execute-transaction', { type: 'transferencia', payload });
+        openConfirmModal(result.message, 'Sucesso!');
         switchView('main');
         await handleConsulta();
     } catch (error) {
@@ -645,33 +220,27 @@ async function handleTransfer(){/*...função original...*/
         showLoading(false);
     }
 }
-async function handlePicking(){/*...função original...*/
+
+async function handlePicking() {
+    const quantidade = parseInt(document.getElementById('modal-qtd-picking').value, 10);
+    const enderecoDestino = document.getElementById('modal-seqend-picking').value;
+
+    if (isNaN(quantidade) || quantidade <= 0 || quantidade > currentItemDetails.quantidade) return openConfirmModal("Quantidade inválida.");
+    if (!enderecoDestino) return openConfirmModal("Selecione um endereço de destino.");
+
+    closePickingModal();
     showLoading(true);
     try {
-        const quantidade = parseInt(document.getElementById('modal-qtd-picking').value, 10);
-        const qtdDisponivel = parseInt(currentItemDetails.quantidade, 10);
-        const enderecoDestino = document.getElementById('modal-seqend-picking').value;
-        if (isNaN(quantidade) || quantidade <= 0 || quantidade > qtdDisponivel) throw new Error("Quantidade para picking é inválida.");
-        if (!enderecoDestino) throw new Error("Selecione um endereço de destino.");
-        closePickingModal();
-        const armazemDestino = currentItemDetails.codarm.toString();
-        const sqlCheck = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = ${enderecoDestino} AND CODARM = ${armazemDestino}`;
-        const checkData = await authenticatedFetch("DbExplorerSP.executeQuery", { sql: sqlCheck });
-        if (checkData.status !== '1') throw new Error("Falha ao verificar o endereço de destino.");
-        const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
-        const records = [];
-        if (destinationItem && destinationItem[0] === currentItemDetails.codprod) {
-            const [destCodProd, destQtd] = destinationItem;
-            records.push({
-                entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "QTDPRO"],
-                values: { "2": armazemDestino, "3": enderecoDestino, "4": destQtd.toString() }
-            });
-        }
-        records.push({
-            entityName: "AD_IBXEND", fields: ["SEQITE", "SEQBAI", "CODARM", "SEQEND", "ARMDES", "ENDDES", "QTDPRO"],
-            values: { "2": currentItemDetails.codarm.toString(), "3": currentItemDetails.sequencia.toString(), "4": armazemDestino, "5": enderecoDestino, "6": quantidade.toString() }
-        });
-        await doTransaction(records);
+        const payload = {
+            origem: currentItemDetails,
+            destino: { 
+                armazemDestino: currentItemDetails.codarm.toString(), 
+                enderecoDestino: enderecoDestino, 
+                quantidade: quantidade 
+            }
+        };
+        const result = await authenticatedFetch('/execute-transaction', { type: 'picking', payload });
+        openConfirmModal(result.message, 'Sucesso!');
         switchView('main');
         await handleConsulta();
     } catch (error) {
@@ -680,18 +249,52 @@ async function handlePicking(){/*...função original...*/
         showLoading(false);
     }
 }
-function renderizarCards(rows){/*...função original...*/
+
+async function openPickingModal() {
+    if (!currentItemDetails) return;
+    document.getElementById('modal-qtd-disponivel-picking').textContent = currentItemDetails.qtdCompleta;
+    const qtdInput = document.getElementById('modal-qtd-picking');
+    qtdInput.value = currentItemDetails.quantidade;
+    qtdInput.max = currentItemDetails.quantidade;
+    const selectPicking = document.getElementById('modal-seqend-picking');
+    selectPicking.innerHTML = '<option value="">Buscando locais...</option>';
+    selectPicking.disabled = true;
+    document.getElementById('picking-modal').classList.remove('hidden');
+    
+    showLoading(true);
+    try {
+        const { codarm, codprod, sequencia } = currentItemDetails;
+        const locations = await authenticatedFetch('/get-picking-locations', { codarm, codprod, sequencia });
+        
+        selectPicking.innerHTML = locations.length ? '<option value="">Selecione um destino</option>' : '<option value="">Nenhum local de picking encontrado</option>';
+        locations.forEach(([seqEnd, descrProd]) => {
+            const option = document.createElement('option');
+            option.value = seqEnd;
+            option.textContent = `${seqEnd} - ${descrProd}`;
+            selectPicking.appendChild(option);
+        });
+        selectPicking.disabled = false;
+    } catch (error) {
+        openConfirmModal(error.message, "Erro");
+        closePickingModal();
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ======================================================
+// FUNÇÕES DE UI E RENDERIZAÇÃO (com a correção em switchView)
+// ======================================================
+function renderizarCards(rows) {
     const resultsContainer = document.getElementById('results-container');
     const emptyState = document.getElementById('empty-state');
+    resultsContainer.innerHTML = '';
     if (!rows || rows.length === 0) {
-        resultsContainer.innerHTML = '';
         emptyState.classList.remove('hidden');
         emptyState.querySelector('span').textContent = "Nenhum resultado encontrado para esta busca.";
         return;
     }
     emptyState.classList.add('hidden');
-    resultsContainer.innerHTML = '';
-    
     rows.forEach(row => {
         const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic, qtdCompleta] = row;
         const card = document.createElement('div');
@@ -704,44 +307,127 @@ function renderizarCards(rows){/*...função original...*/
         resultsContainer.appendChild(card);
     });
 }
-function populateDetails(details){/*...função original...*/
-    const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta] = details;
+function populateDetails(detailsArray) {
+    const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta] = detailsArray;
     currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta };
-    
     const detailsContent = document.getElementById('details-content');
     const pickingClass = endpic === 'S' ? 'picking-area' : '';
     detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Marca</div><div class="value">${marca || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
     feather.replace();
 }
-function formatarData(dataString){/*...função original...*/
+function renderHistoryCards(rows) {
+    const container = document.getElementById('history-container');
+    const emptyState = document.getElementById('history-empty-state');
+    container.innerHTML = '';
+    if (!rows || rows.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
+    }
+    emptyState.classList.add('hidden');
+    rows.forEach(row => {
+        const [seqbai, hora, codarm, seqend, armdes, enddes, codprod, descrprod] = row;
+        const card = document.createElement('div');
+        card.className = 'history-card';
+        let productHtml = descrprod ? `<div class="product-info">${descrprod}<span class="product-code">Cód: ${codprod}</span></div>` : '';
+        let movementHtml = '';
+        if (armdes && enddes) {
+            movementHtml = `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><i data-feather="arrow-right" class="arrow"></i><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
+        } else {
+            movementHtml = `<div class="history-location"><div class="location"><div class="label">Local da Baixa</div><div>${codarm} &rarr; ${seqend}</div></div></div>`;
+        }
+        card.innerHTML = `<div class="card-header"><p>Operação: <span>${seqbai}</span></p><p>${hora}</p></div><div class="card-body">${productHtml}${movementHtml}</div>`;
+        container.appendChild(card);
+    });
+    feather.replace();
+}
+function formatarData(dataString) {
     if (!dataString || typeof dataString !== 'string') return '';
     const parteData = dataString.split(' ')[0];
     return parteData.length !== 8 ? dataString : `${parteData.substring(0, 2)}/${parteData.substring(2, 4)}/${parteData.substring(4, 8)}`;
 }
 
+// ================================== 
+// FUNÇÃO CORRIGIDA
+// ==================================
+function switchView(viewName) {
+    // Esconde todas as sub-páginas dentro do container principal
+    document.querySelectorAll('#app-container .page').forEach(p => p.classList.remove('active'));
+    
+    const loginPage = document.getElementById('login-page');
+    const appContainer = document.getElementById('app-container');
+
+    if (viewName === 'login') {
+        loginPage.classList.remove('hidden');
+        appContainer.classList.add('hidden');
+    } else {
+        loginPage.classList.add('hidden');
+        appContainer.classList.remove('hidden');
+        
+        // Ativa a sub-página correta dentro do app-container
+        const activePage = document.getElementById(`${viewName}-page`);
+        if (activePage) {
+            activePage.classList.add('active');
+        }
+    }
+}
+
+function openConfirmModal(message, title = 'Aviso') { document.getElementById('modal-confirm-title').textContent = title; document.getElementById('modal-confirm-message').innerHTML = message; document.getElementById('confirm-modal').classList.remove('hidden'); }
+function closeConfirmModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
+function openBaixaModal() {
+    if (!currentItemDetails) return;
+    document.getElementById('modal-qtd-disponivel').textContent = currentItemDetails.qtdCompleta;
+    const qtdInput = document.getElementById('modal-qtd-baixa');
+    qtdInput.value = currentItemDetails.quantidade;
+    qtdInput.max = currentItemDetails.quantidade;
+    document.getElementById('baixa-modal').classList.remove('hidden');
+}
+function closeBaixaModal() { document.getElementById('baixa-modal').classList.add('hidden'); }
+function openTransferModal() {
+    if (!currentItemDetails) return;
+    document.getElementById('modal-qtd-disponivel-transfer').textContent = currentItemDetails.qtdCompleta;
+    const qtdInput = document.getElementById('modal-qtd-transfer');
+    qtdInput.value = currentItemDetails.quantidade;
+    qtdInput.max = currentItemDetails.quantidade;
+    document.getElementById('modal-enddes-transfer').value = '';
+    document.getElementById('transfer-modal').classList.remove('hidden');
+}
+function closeTransferModal() { document.getElementById('transfer-modal').classList.add('hidden'); }
+function closePickingModal() { document.getElementById('picking-modal').classList.add('hidden'); }
+const loading = document.getElementById('loading');
+function showLoading(show) { loading.classList.toggle('hidden', !show); }
+function openProfilePanel() { document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-panel').classList.add('active'); document.getElementById('profile-user-info').textContent = `${Session.getCodUsu()} - ${Session.getUsername()}`; document.getElementById('session-hash').textContent = Session.getToken(); feather.replace(); }
+function closeProfilePanel() { document.getElementById('profile-overlay').classList.add('hidden'); document.getElementById('profile-panel').classList.remove('active'); }
+const InactivityTimer = { timeoutID: null, timeoutInMilliseconds: 3600 * 1000, start: function() { this.clear(); this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds); }, reset: function() { this.start(); }, clear: function() { if (this.timeoutID) clearTimeout(this.timeoutID); }, forceLogout: function() { handleLogout(true); }};
+const activityEvents = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
+let throttleTimeout = null;
+const throttledReset = () => { if (throttleTimeout) return; throttleTimeout = setTimeout(() => { InactivityTimer.reset(); throttleTimeout = null; }, 500); };
+function setupActivityListeners() { activityEvents.forEach(event => window.addEventListener(event, throttledReset)); }
+function removeActivityListeners() { activityEvents.forEach(event => window.removeEventListener(event, throttledReset)); }
+// ======================================================
+// INICIALIZAÇÃO E EVENT LISTENERS
+// ======================================================
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-login').addEventListener('click', handleLogin);
+    document.getElementById('login-password').addEventListener('keyup', (e) => e.key === 'Enter' && handleLogin());
     document.getElementById('btn-logout').addEventListener('click', () => handleLogout(false));
-    document.getElementById('login-password').addEventListener('keyup', (event) => { if (event.key === 'Enter') handleLogin(); });
     document.getElementById('btn-consultar').addEventListener('click', handleConsulta);
-    document.getElementById('filtro-sequencia').addEventListener('keyup', (event) => { if (event.key === 'Enter') handleConsulta(); });
+    document.getElementById('filtro-sequencia').addEventListener('keyup', (e) => e.key === 'Enter' && handleConsulta());
     document.getElementById('btn-voltar').addEventListener('click', () => switchView('main'));
+    document.getElementById('btn-history-voltar').addEventListener('click', () => switchView('main'));
     document.querySelector('.btn-baixar').addEventListener('click', openBaixaModal);
     document.querySelector('.btn-transferir').addEventListener('click', openTransferModal);
     document.querySelector('.btn-picking').addEventListener('click', openPickingModal);
-    document.getElementById('btn-cancelar-baixa').addEventListener('click', closeBaixaModal);
     document.getElementById('btn-confirmar-baixa').addEventListener('click', handleBaixa);
-    document.getElementById('btn-cancelar-transfer').addEventListener('click', closeTransferModal);
     document.getElementById('btn-confirmar-transfer').addEventListener('click', handleTransfer);
-    document.getElementById('btn-cancelar-picking').addEventListener('click', closePickingModal);
     document.getElementById('btn-confirmar-picking').addEventListener('click', handlePicking);
+    document.getElementById('btn-cancelar-baixa').addEventListener('click', closeBaixaModal);
+    document.getElementById('btn-cancelar-transfer').addEventListener('click', closeTransferModal);
+    document.getElementById('btn-cancelar-picking').addEventListener('click', closePickingModal);
     document.getElementById('btn-close-confirm').addEventListener('click', closeConfirmModal);
     document.getElementById('btn-open-profile').addEventListener('click', openProfilePanel);
     document.getElementById('btn-close-profile').addEventListener('click', closeProfilePanel);
     document.getElementById('profile-overlay').addEventListener('click', closeProfilePanel);
     document.getElementById('btn-history').addEventListener('click', showHistoryPage);
-    document.getElementById('btn-history-voltar').addEventListener('click', () => switchView('main'));
-
 
     if (Session.getToken()) {
         switchView('main');
