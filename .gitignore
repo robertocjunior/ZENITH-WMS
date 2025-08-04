@@ -140,6 +140,7 @@ node_modules
 
 # Arquivo com as credenciais secretas
 .env
+*.env
 
 # Logs
 npm-debug.log*
