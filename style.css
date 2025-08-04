@@ -35,7 +35,7 @@ html, body {
 }
 
 /* ================================== */
-/* NOVOS ESTILOS PARA TELA DE LOGIN   */
+/* ESTILOS PARA TELA DE LOGIN   */
 /* ================================== */
 #login-page {
     justify-content: center;
@@ -79,34 +79,6 @@ html, body {
 /* ================================== */
 /* MODIFICAÇÕES NO HEADER DO APP      */
 /* ================================== */
-.header-top-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: white;
-    padding: 0 5px; /* Pequeno ajuste de padding */
-}
-#user-info {
-    font-weight: 500;
-}
-#btn-logout {
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    opacity: 0.8;
-    padding: 5px;
-    border-radius: 5px;
-}
-#btn-logout:hover {
-    opacity: 1;
-    background-color: rgba(255,255,255,0.1);
-}
-
-/* TELA PRINCIPAL */
 .app-header {
     background-color: var(--primary-color);
     padding: 15px;
@@ -117,18 +89,58 @@ html, body {
     gap: 15px;
 }
 
+/* Alterado: Removido pois não é mais necessário */
+.header-main-line {
+    /* Este seletor foi removido do CSS para simplificar */
+}
+
+/* Container para agrupar seletor e botão */
+.header-left-items {
+    display: flex;
+    align-items: flex-end; /* Alinha o ícone na parte de baixo */
+    gap: 15px; 
+    width: 100%;
+}
+
+.profile-button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 8px; 
+    border-radius: 8px; /* Borda levemente arredondada */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+    height: 47px; /* Altura fixa para alinhar com o seletor */
+}
+
+.profile-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.profile-button i {
+    width: 24px;  
+    height: 24px;
+}
+
+/* Alterado: Label acima e seletor crescendo */
 .warehouse-selector {
     display: flex;
-    flex-direction: column;
-    gap: 5px;
+    flex-direction: column; /* Faz a label ficar acima do select */
+    flex-grow: 1; /* Faz este container ocupar o espaço restante */
+    gap: 5px; /* Espaço entre a label e o select */
 }
+
 .warehouse-selector label {
     color: white;
     font-size: 14px;
     font-weight: 500;
 }
+
 .warehouse-selector select {
-    width: 100%;
+    width: 100%; /* Faz o select ocupar 100% do seu container pai */
     padding: 12px 15px;
     font-size: 16px;
     border-radius: 8px;
@@ -275,13 +287,124 @@ html, body {
     background-color: var(--card-background);
     box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
     flex-shrink: 0;
-    position: relative; /* Necessário para que o z-index funcione */
-    z-index: 10;      /* Eleva a barra de botões acima de outros conteúdos */
+    position: relative;
+    z-index: 10;
 }
 .btn-action { flex: 1; padding: 18px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; color: white; }
 .btn-baixar { background-color: #28a745; }
 .btn-transferir { background-color: #007bff; }
 .btn-picking { background-color: #fd7e14; }
+
+/* ================================== */
+/* NOVOS ESTILOS PARA A GUIA LATERAL  */
+/* ================================== */
+.profile-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1900;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+.profile-overlay.active {
+    opacity: 1;
+}
+
+.profile-panel {
+    position: fixed;
+    top: 0;
+    right: -100%; /* Começa fora da tela */
+    width: 100%;
+    max-width: 320px;
+    height: 100%;
+    background-color: var(--card-background);
+    box-shadow: -5px 0 15px rgba(0,0,0,0.1);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.3s ease-in-out;
+}
+.profile-panel.active {
+    right: 0; /* Entra na tela */
+}
+
+.profile-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.profile-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--primary-color);
+}
+.close-panel-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    color: var(--text-light);
+}
+
+.profile-panel-body {
+    padding: 15px;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+.panel-button {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 15px;
+    text-align: left;
+    font-size: 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    color: var(--text-color);
+}
+.panel-button:hover {
+    background-color: var(--background-color);
+}
+.panel-button.logout-button {
+    color: #dc3545; /* Vermelho para perigo/sair */
+}
+
+.profile-panel-footer {
+    padding: 20px;
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.session-hash-container {
+    margin-top: 15px;
+}
+.session-hash-container label {
+    font-size: 12px;
+    color: var(--text-light);
+}
+#session-hash {
+    font-size: 11px;
+    color: var(--text-light);
+    background-color: var(--background-color);
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 5px;
+    word-break: break-all;
+    font-family: monospace;
+}
+
 
 /* MODAIS */
 .modal-overlay {
@@ -292,7 +415,7 @@ html, body {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 2000;
+    z-index: 2100; /* Z-index maior que o da guia lateral */
 }
 .modal-content {
     background-color: white;
@@ -360,7 +483,10 @@ html, body {
 @media (max-width: 768px) {
     .details-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 400px) {
+@media (max-width: 480px) {
     .app-header { flex-direction: column; }
     .search-bar { flex-direction: column; align-items: stretch; }
+    .warehouse-selector { flex-direction: column; align-items: stretch; }
+    .warehouse-selector select { width: 100%; }
+    .header-left-items { justify-content: space-between; width: 100%;}
 }

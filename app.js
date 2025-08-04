@@ -164,6 +164,26 @@ function closePickingModal() { document.getElementById('picking-modal').classLis
 const loading = document.getElementById('loading');
 function showLoading(show) { loading.classList.toggle('hidden', !show); }
 
+function openProfilePanel() {
+    document.getElementById('profile-overlay').classList.remove('hidden');
+    document.getElementById('profile-overlay').classList.add('active');
+    document.getElementById('profile-panel').classList.add('active');
+    
+    const codUsu = Session.getCodUsu();
+    const username = Session.getUsername();
+    document.getElementById('profile-user-info').textContent = `${codUsu} - ${username}`;
+    document.getElementById('session-hash').textContent = Session.getToken();
+    feather.replace();
+}
+function closeProfilePanel() {
+    document.getElementById('profile-overlay').classList.remove('active');
+    document.getElementById('profile-panel').classList.remove('active');
+    // Adiciona um pequeno delay para a animação de fade-out acontecer
+    setTimeout(() => {
+        document.getElementById('profile-overlay').classList.add('hidden');
+    }, 300);
+}
+
 // ======================================================
 // LÓGICA DE API
 // ======================================================
@@ -221,7 +241,8 @@ async function handleLogin() {
         Session.saveCodUsu(codUsu);
 
         switchView('main');
-        document.getElementById('user-info').textContent = `${codUsu} - ${username}`;
+        // A linha abaixo foi removida pois o elemento #user-info não existe mais no botão
+        // document.getElementById('user-info').textContent = `${codUsu} - ${username}`;
         setupActivityListeners();
         InactivityTimer.start();
         await fetchAndPopulateWarehouses();
@@ -238,6 +259,7 @@ async function handleLogin() {
 }
 
 async function handleLogout(fromInactivity = false) {
+    closeProfilePanel();
     const token = Session.getToken();
     if (token) {
         try {
@@ -264,7 +286,6 @@ async function fetchAndPopulateWarehouses() {
         const sql = "SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM ORDER BY CODARM";
         const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
         if (data.status !== '1') throw new Error(data.statusMessage);
-        
         const armazens = data.responseBody.rows;
         const selectPrincipal = document.getElementById('armazem-select');
         const selectModal = document.getElementById('modal-armdes-transfer');
@@ -504,7 +525,7 @@ function formatarData(dataString) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Listeners
+    // Buttons and Listeners
     document.getElementById('btn-login').addEventListener('click', handleLogin);
     document.getElementById('btn-logout').addEventListener('click', () => handleLogout(false));
     document.getElementById('login-password').addEventListener('keyup', (event) => { if (event.key === 'Enter') handleLogin(); });
@@ -521,17 +542,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-cancelar-picking').addEventListener('click', closePickingModal);
     document.getElementById('btn-confirmar-picking').addEventListener('click', handlePicking);
     document.getElementById('btn-close-confirm').addEventListener('click', closeConfirmModal);
+    document.getElementById('btn-open-profile').addEventListener('click', openProfilePanel);
+    document.getElementById('btn-close-profile').addEventListener('click', closeProfilePanel);
+    document.getElementById('profile-overlay').addEventListener('click', closeProfilePanel);
 
-    // Lógica de inicialização
+
+    // Startup Logic
     if (Session.getToken()) {
         switchView('main');
-        const codUsu = Session.getCodUsu();
-        const username = Session.getUsername();
-        document.getElementById('user-info').textContent = `${codUsu} - ${username}`;
-        
         setupActivityListeners();
         InactivityTimer.start();
-        
         fetchAndPopulateWarehouses();
         feather.replace();
     } else {

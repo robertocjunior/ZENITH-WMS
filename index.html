@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/feather-icons"></script>
 </head>
 <body>
-    <div id="login-page" class="page">
+    <div id="login-page" class="page active">
         <div class="login-container">
             <h2>WMS Endereçamento</h2>
             <p>Faça login com seu usuário e senha do Sankhya.</p>
@@ -28,15 +28,18 @@
     <div id="app-container" class="hidden">
         <div id="main-page" class="page">
             <header class="app-header">
-                <div class="header-top-bar">
-                    <div id="user-info"></div>
-                    <button id="btn-logout"><i data-feather="log-out"></i> Sair</button>
-                </div>
-                <div class="warehouse-selector">
-                    <label for="armazem-select">Armazém</label>
-                    <select id="armazem-select">
-                        <option value="">Carregando...</option>
-                    </select>
+                <div class="header-main-line">
+                    <div class="header-left-items">
+                        <div class="warehouse-selector">
+                            <label for="armazem-select">Armazém</label>
+                            <select id="armazem-select">
+                                <option value="">Carregando...</option>
+                            </select>
+                        </div>
+                        <button id="btn-open-profile" class="profile-button">
+                            <i data-feather="user"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="search-bar">
                     <div class="input-wrapper">
@@ -67,6 +70,34 @@
             </div>
         </div>
     </div>
+
+    <div id="profile-overlay" class="profile-overlay hidden"></div>
+    <div id="profile-panel" class="profile-panel">
+        <div class="profile-panel-header">
+            <div class="profile-info">
+                <i data-feather="user-check"></i>
+                <span id="profile-user-info"></span>
+            </div>
+            <button id="btn-close-profile" class="close-panel-btn"><i data-feather="x"></i></button>
+        </div>
+        <div class="profile-panel-body">
+            <button class="panel-button" id="btn-history">
+                <i data-feather="clock"></i>
+                <span>Histórico de Operações</span>
+            </button>
+        </div>
+        <div class="profile-panel-footer">
+            <button class="panel-button logout-button" id="btn-logout">
+                <i data-feather="log-out"></i>
+                <span>Sair</span>
+            </button>
+            <div class="session-hash-container">
+                <label>ID da Sessão</label>
+                <div id="session-hash"></div>
+            </div>
+        </div>
+    </div>
+
 
     <div id="baixa-modal" class="modal-overlay hidden">
         <div class="modal-content">
