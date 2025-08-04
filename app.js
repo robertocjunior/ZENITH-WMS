@@ -363,6 +363,32 @@ async function fetchAndShowDetails(sequencia) {
     }
 }
 
+/**
+ * Verifica o banco de dados repetidamente até que o campo CODPROD seja populado.
+ */
+async function pollForCodProdUpdate(seqBai, expectedRecords, timeout = 20000, interval = 500) {
+    const startTime = Date.now();
+    const sql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
+
+    while (Date.now() - startTime < timeout) {
+        try {
+            const data = await authenticatedFetch("DbExplorerSP.executeQuery", { sql });
+            if (data.status === '1' && data.responseBody.rows.length > 0) {
+                const populatedCount = parseInt(data.responseBody.rows[0][0], 10);
+                if (populatedCount >= expectedRecords) {
+                    console.log(`Campo CODPROD populado com sucesso após ${Date.now() - startTime}ms.`);
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.error("Erro durante a verificação (polling) do CODPROD:", error);
+        }
+        await new Promise(resolve => setTimeout(resolve, interval));
+    }
+
+    throw new Error("O sistema não populou o CODPROD a tempo (timeout). A operação pode não ter sido concluída corretamente.");
+}
+
 async function doTransaction(records) {
     const hoje = new Date().toLocaleDateString('pt-BR');
     const codUsu = Session.getCodUsu();
@@ -395,9 +421,13 @@ async function doTransaction(records) {
         }
     }
 
-    // 3. Adiciona uma pausa fixa, já que não é possível verificar o campo via SQL.
-    const delay = ms => new Promise(res => setTimeout(res, ms));
-    await delay(2000); // Pausa de 2 segundos. Ajuste este valor se necessário.
+    // 3. Aguarda ativamente o campo CODPROD ser populado
+    try {
+        await pollForCodProdUpdate(seqBai, records.length);
+    } catch (error) {
+        openConfirmModal(error.message, "Falha na Sincronização");
+        return; 
+    }
 
     // 4. Executa a procedure de baixa
     const stpBody = { 
