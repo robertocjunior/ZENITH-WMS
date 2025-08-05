@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "build": "vite build"
+    "build": "vite build",
+    "redeploy": "pm2 delete wms-zenith && npm run build && pm2 start ecosystem.config.js --env production && pm2 logs wms-zenith"
   },
   "repository": {
     "type": "git",

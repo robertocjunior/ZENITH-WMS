@@ -28,7 +28,7 @@ const loginLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutos
-	max: 200,
+	max: 200, 
 	message: 'Muitas requisições para a API a partir deste IP.',
 	standardHeaders: true,
 	legacyHeaders: false,
@@ -130,129 +130,108 @@ const authenticateToken = (req, res, next) => {
 	});
 };
 
+// ========================================================================
+// ROTA DE LOGIN COM LÓGICA DE RENOVAÇÃO DE TOKEN
+// ========================================================================
 app.post('/login', loginLimiter, async (req, res) => {
-    // ... (toda a sua lógica de login permanece igual)
-	const { username, password, deviceToken: clientDeviceToken } = req.body;
-	logger.http(`Tentativa de login para o usuário: ${username}`);
-	try {
-		const loginResponse = await callSankhyaService('MobileLoginSP.login', {
-			NOMUSU: { $: username.toUpperCase() },
-			INTERNO: { $: password },
-		});
-		if (loginResponse.status !== '1')
-			throw new Error(
-				loginResponse.statusMessage || 'Credenciais de operador inválidas.'
-			);
+    const { username, password, deviceToken: clientDeviceToken } = req.body;
+    logger.http(`Tentativa de login para o usuário: ${username}`);
+    try {
+        // CORREÇÃO: Garante que cada tentativa de login comece com um token limpo.
+        await getSystemBearerToken(true);
 
-		const userQueryResponse = await callSankhyaService(
-			'DbExplorerSP.executeQuery',
-			{
-				sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(
-					username.toUpperCase()
-				)}'`,
-			}
-		);
-		if (
-			userQueryResponse.status !== '1' ||
-			userQueryResponse.responseBody.rows.length === 0
-		)
-			throw new Error('Não foi possível encontrar o código de usuário (CODUSU).');
-		const codUsu = userQueryResponse.responseBody.rows[0][0];
+        const userQueryResponse = await callSankhyaService('DbExplorerSP.executeQuery', {
+            sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
+        });
 
-		let finalDeviceToken = clientDeviceToken;
-		let deviceIsAuthorized = false;
+        if (userQueryResponse.status !== '1' || !userQueryResponse.responseBody || userQueryResponse.responseBody.rows.length === 0) {
+            throw new Error('Usuário não encontrado ou falha ao buscar dados.');
+        }
+        const codUsu = userQueryResponse.responseBody.rows[0][0];
+        logger.info(`CODUSU ${codUsu} encontrado para o usuário ${username}.`);
 
-		if (clientDeviceToken) {
-			const deviceCheckResponse = await callSankhyaService(
-				'DbExplorerSP.executeQuery',
-				{
-					sql: `SELECT ATIVO FROM AD_DISPAUT WHERE CODUSU = ${codUsu} AND DEVICETOKEN = '${sanitizeStringForSql(
-						clientDeviceToken
-					)}'`,
-				}
-			);
-			if (deviceCheckResponse.responseBody.rows.length > 0) {
-				if (deviceCheckResponse.responseBody.rows[0][0] === 'S') {
-					deviceIsAuthorized = true;
-				} else {
-					logger.warn(
-						`Login bloqueado para usuário ${username}. Dispositivo ${clientDeviceToken} inativo.`
-					);
-					return res.status(403).json({
-						message:
-							'Este dispositivo está registrado, mas não está ativo. Contate um administrador.',
-						deviceToken: clientDeviceToken,
-					});
-				}
-			}
-		}
+        let finalDeviceToken = clientDeviceToken;
+        let deviceIsAuthorized = false;
 
-		if (!deviceIsAuthorized) {
-			finalDeviceToken = crypto.randomBytes(20).toString('hex');
-			const descrDisp = req.headers['user-agent']
-				? req.headers['user-agent'].substring(0, 100)
-				: 'Dispositivo Web';
-			await callSankhyaService('DatasetSP.save', {
-				entityName: 'AD_DISPAUT',
-				fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
-				records: [
-					{
-						values: {
-							0: codUsu,
-							1: finalDeviceToken,
-							2: sanitizeStringForSql(descrDisp),
-							3: 'N',
-							4: new Date().toLocaleDateString('pt-BR'),
-						},
-					},
-				],
-			});
-			logger.info(
-				`Dispositivo novo registrado para usuário ${username}. Token: ${finalDeviceToken}`
-			);
-			return res.status(403).json({
-				message:
-					'Dispositivo novo detectado e registrado. Solicite a um administrador para ativá-lo.',
-				deviceToken: finalDeviceToken,
-			});
-		}
+        if (clientDeviceToken) {
+            const deviceCheckResponse = await callSankhyaService('DbExplorerSP.executeQuery', {
+                sql: `SELECT ATIVO FROM AD_DISPAUT WHERE CODUSU = ${codUsu} AND DEVICETOKEN = '${sanitizeStringForSql(clientDeviceToken)}'`,
+            });
 
-		const sessionPayload = { username: username, codusu: codUsu };
-		const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, {
-			expiresIn: '8h',
-		});
-		logger.info(`Usuário ${username} logado com sucesso.`);
-		res.json({
-			sessionToken,
-			username,
-			codusu: codUsu,
-			deviceToken: finalDeviceToken,
-		});
-	} catch (error) {
-		let errorMessage = 'Erro durante o processo de login.';
-		if (error.response && error.response.data) {
-			const sankhyaError = error.response.data.error;
-			if (sankhyaError && sankhyaError.descricao) {
-				errorMessage = sankhyaError.descricao;
-			} else if (error.response.data.statusMessage) {
-				errorMessage = error.response.data.statusMessage;
-			} else {
-				errorMessage = JSON.stringify(error.response.data);
-			}
-		} else if (error.message) {
-			errorMessage = error.message;
-		}
+            if (deviceCheckResponse.responseBody?.rows.length > 0) {
+                if (deviceCheckResponse.responseBody.rows[0][0] === 'S') {
+                    deviceIsAuthorized = true;
+                    logger.info(`Dispositivo ${clientDeviceToken} autorizado para CODUSU ${codUsu}.`);
+                } else {
+                    logger.warn(`Login bloqueado para usuário ${username}. Dispositivo ${clientDeviceToken} inativo.`);
+                    return res.status(403).json({
+                        message: 'Este dispositivo está registrado, mas não está ativo. Contate um administrador.',
+                        deviceToken: clientDeviceToken,
+                    });
+                }
+            }
+        }
 
-		logger.error(`Falha no login para ${username}: ${errorMessage}`);
-		res.status(401).json({ message: errorMessage });
-	}
+        if (!deviceIsAuthorized) {
+            finalDeviceToken = crypto.randomBytes(20).toString('hex');
+            const descrDisp = req.headers['user-agent'] ? req.headers['user-agent'].substring(0, 100) : 'Dispositivo Web';
+            await callSankhyaService('DatasetSP.save', {
+                entityName: 'AD_DISPAUT',
+                fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
+                records: [{ values: { 0: codUsu, 1: finalDeviceToken, 2: sanitizeStringForSql(descrDisp), 3: 'N', 4: new Date().toLocaleDateString('pt-BR') } }],
+            });
+            logger.info(`Dispositivo novo registrado para usuário ${username}. Token: ${finalDeviceToken}`);
+            return res.status(403).json({
+                message: 'Dispositivo novo detectado e registrado. Solicite a um administrador para ativá-lo.',
+                deviceToken: finalDeviceToken,
+            });
+        }
+        
+        const loginResponse = await callSankhyaService('MobileLoginSP.login', {
+            NOMUSU: { $: username.toUpperCase() },
+            INTERNO: { $: password },
+        });
+
+        if (loginResponse.status !== '1') {
+            throw new Error(loginResponse.statusMessage || 'Credenciais de operador inválidas.');
+        }
+        logger.info(`Senha validada com sucesso para o usuário ${username}.`);
+
+        // CORREÇÃO: Imediatamente após a contaminação, renova o token de sistema.
+        logger.info('Limpando sessão do sistema após login do usuário...');
+        await getSystemBearerToken(true);
+
+        const sessionPayload = { username: username, codusu: codUsu };
+        const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
+        logger.info(`Usuário ${username} logado com sucesso.`);
+        res.json({
+            sessionToken,
+            username,
+            codusu: codUsu,
+            deviceToken: finalDeviceToken,
+        });
+
+    } catch (error) {
+        let errorMessage = 'Erro durante o processo de login.';
+        if (error.response && error.response.data) {
+            const sankhyaError = error.response.data.error;
+            if (sankhyaError && sankhyaError.descricao) { errorMessage = sankhyaError.descricao; } 
+            else if (error.response.data.statusMessage) { errorMessage = error.response.data.statusMessage; } 
+            else { errorMessage = JSON.stringify(error.response.data); }
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+
+        logger.error(`Falha no login para ${username}: ${errorMessage}`);
+        res.status(401).json({ message: errorMessage });
+    }
 });
+
 
 const apiRoutes = express.Router();
 apiRoutes.use(apiLimiter);
 apiRoutes.use(authenticateToken);
 
-// ... (todas as suas rotas da API, como /logout, /get-warehouses, etc., permanecem iguais)
 apiRoutes.post('/logout', (req, res) => {
 	const { username } = req.userSession;
 	logger.info(`Usuário ${username} realizou logout.`);
@@ -273,6 +252,39 @@ apiRoutes.post('/get-warehouses', async (req, res) => {
 		res.status(500).json({ message: 'Ocorreu um erro ao buscar os armazéns.' });
 	}
 });
+
+apiRoutes.post('/get-permissions', async (req, res) => {
+    const { username, codusu } = req.userSession;
+    logger.http(`Verificando permissões para o usuário ${username} (CODUSU: ${codusu}).`);
+    try {
+        const sql = `SELECT BAIXA, TRANSF, PICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+        const data = await callSankhyaService('DbExplorerSP.executeQuery', { sql });
+
+        if (data.status !== '1') {
+            throw new Error(data.statusMessage || 'Falha ao consultar permissões.');
+        }
+
+        if (data.responseBody.rows.length === 0) {
+            logger.warn(`Nenhuma permissão encontrada para o usuário ${username}. Retornando acesso negado a todas as funções.`);
+            return res.json({ baixa: false, transfer: false, pick: false });
+        }
+
+        const perms = data.responseBody.rows[0];
+        const permissions = {
+            baixa: perms[0] === 'S',
+            transfer: perms[1] === 'S',
+            pick: perms[2] === 'S'
+        };
+        
+        logger.info(`Permissões para ${username}: Baixa=${permissions.baixa}, Transfer=${permissions.transfer}, Pick=${permissions.pick}`);
+        res.json(permissions);
+
+    } catch (error) {
+        logger.error(`Erro em /get-permissions para o usuário ${username}: ${error.message}`);
+        res.status(500).json({ message: 'Ocorreu um erro ao verificar suas permissões.' });
+    }
+});
+
 
 apiRoutes.post('/search-items', async (req, res) => {
 	try {
@@ -413,6 +425,22 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 	logger.http(`Usuário ${username} iniciou uma transação do tipo: ${type}.`);
 
 	try {
+        const permCheckSql = `SELECT BAIXA, TRANSF, PICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+        const permData = await callSankhyaService('DbExplorerSP.executeQuery', { sql: permCheckSql });
+        if (permData.status !== '1' || permData.responseBody.rows.length === 0) {
+            throw new Error('Falha ao verificar permissão final. Operação cancelada.');
+        }
+        const perms = permData.responseBody.rows[0];
+        const hasPermission = 
+            (type === 'baixa' && perms[0] === 'S') ||
+            (type === 'transferencia' && perms[1] === 'S') ||
+            (type === 'picking' && perms[2] === 'S');
+
+        if (!hasPermission) {
+            logger.warn(`Tentativa de execução de '${type}' bloqueada por falta de permissão para ${username}.`);
+            return res.status(403).json({ message: 'Você não tem permissão para executar esta ação.' });
+        }
+
 		const hoje = new Date().toLocaleDateString('pt-BR');
 		const cabecalhoData = await callSankhyaService('DatasetSP.save', {
 			entityName: 'AD_BXAEND',
@@ -565,7 +593,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 			`Erro em /execute-transaction para o usuário ${username}: ${error.message}`
 		);
 		res.status(500)
-			.json({ message: 'Ocorreu um erro ao executar a transação.' });
+			.json({ message: error.message || 'Ocorreu um erro ao executar a transação.' });
 	}
 });
 
@@ -575,27 +603,19 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 // ======================================================
 app.use('/api', apiRoutes);
 
-// --- MODIFICADO: SERVIR ARQUIVOS DO FRONTEND ---
 if (process.env.NODE_ENV === 'production') {
     logger.info('Servidor em modo de PRODUÇÃO.');
-    // Serve os arquivos estáticos gerados pelo Vite (da pasta 'dist')
     app.use(express.static(path.join(__dirname, 'dist')));
-
-    // Para qualquer outra requisição GET, serve o index.html de produção
     app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
 } else {
     logger.info('Servidor em modo de DESENVOLVIMENTO.');
-    // Serve os arquivos estáticos da raiz do projeto (como antes)
     app.use(express.static(path.join(__dirname, '')));
-
-    // Para qualquer outra requisição GET, serve o index.html da raiz
     app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, 'index.html'));
     });
 }
-// --- FIM DA MODIFICAÇÃO ---
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';

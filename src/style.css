@@ -28,6 +28,11 @@ html, body {
     color: var(--text-color);
 }
 
+/* Adicionado para garantir que o container do app ocupe toda a altura */
+#app-container {
+    height: 100%;
+}
+
 .page {
     display: none;
     flex-direction: column;
@@ -305,7 +310,19 @@ html, body {
     position: relative;
     z-index: 10;
 }
-.btn-action { flex: 1; padding: 18px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; color: white; }
+.btn-action {
+    flex: 1;
+    padding: 18px;
+    font-size: 16px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: white;
+    /* Adicionado para centralizar o texto do botão */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 .btn-baixar { background-color: #28a745; }
 .btn-transferir { background-color: #007bff; }
 .btn-picking { background-color: #fd7e14; }
