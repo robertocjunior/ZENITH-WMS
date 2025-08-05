@@ -1,3 +1,5 @@
+import './style.css';
+
 // app.js
 let currentItemDetails = null;
 

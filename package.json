@@ -1,10 +1,11 @@
 {
-  "name": "sankhya-pwa",
+  "name": "Zenith WMS",
   "version": "1.0.0",
-  "description": "teste de sistema de endereçamento sankhya",
-  "main": "index.js",
+  "description": "sankhya de endereçamento Zenith",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "build": "vite build"
   },
   "repository": {
     "type": "git",
@@ -26,5 +27,9 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "terser": "^5.43.1",
+    "vite": "^7.0.6"
   }
 }

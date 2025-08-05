@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WMS Zenith</title>
-    <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
@@ -113,7 +112,6 @@
             </div>
         </div>
     </div>
-
     <div id="baixa-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h3>Dar Baixa no Produto</h3>
@@ -128,7 +126,6 @@
             </div>
         </div>
     </div>
-
     <div id="transfer-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h3>Transferir Produto</h3>
@@ -151,7 +148,6 @@
             </div>
         </div>
     </div>
-
     <div id="picking-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h3>Mover para Picking</h3>
@@ -172,12 +168,10 @@
             </div>
         </div>
     </div>
-
     <div id="loading" class="loading-indicator hidden">
         <div class="spinner"></div>
         <p>Carregando...</p>
     </div>
-
     <div id="confirm-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h3 id="modal-confirm-title">Aviso</h3>
@@ -189,6 +183,6 @@
     </div>
     
     <script src="config.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="/app.js"></script>
 </body>
 </html>

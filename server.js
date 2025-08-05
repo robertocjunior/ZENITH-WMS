@@ -15,11 +15,8 @@ const app = express();
 app.use(helmet());
 app.use(express.json());
 app.use(cors());
-app.set('trust proxy', 1); // ADICIONADO: Corrige o erro do express-rate-limit
+app.set('trust proxy', 1);
 
-// ======================================================
-// CONFIGURAÇÃO DE SEGURANÇA (RATE LIMIT)
-// ======================================================
 const loginLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutos
 	max: 10,
@@ -41,9 +38,6 @@ const SANKHYA_API_URL = process.env.SANKHYA_API_URL;
 const JWT_SECRET = process.env.JWT_SECRET;
 let systemBearerToken = null;
 
-// ======================================================
-// FUNÇÕES AUXILIARES E DE SANITIZAÇÃO
-// ======================================================
 function sanitizeStringForSql(str) {
 	if (str === null || str === undefined) return '';
 	if (typeof str !== 'string') return '';
@@ -136,10 +130,8 @@ const authenticateToken = (req, res, next) => {
 	});
 };
 
-// ======================================================
-// ROTAS PÚBLICAS (NÃO EXIGEM TOKEN)
-// ======================================================
 app.post('/login', loginLimiter, async (req, res) => {
+    // ... (toda a sua lógica de login permanece igual)
 	const { username, password, deviceToken: clientDeviceToken } = req.body;
 	logger.http(`Tentativa de login para o usuário: ${username}`);
 	try {
@@ -237,12 +229,11 @@ app.post('/login', loginLimiter, async (req, res) => {
 			deviceToken: finalDeviceToken,
 		});
 	} catch (error) {
-		// MODIFICADO: Lógica para extrair a mensagem de erro de forma mais inteligente
 		let errorMessage = 'Erro durante o processo de login.';
 		if (error.response && error.response.data) {
 			const sankhyaError = error.response.data.error;
 			if (sankhyaError && sankhyaError.descricao) {
-				errorMessage = sankhyaError.descricao; // Ex: "Bearer Token inválido ou Expirado."
+				errorMessage = sankhyaError.descricao;
 			} else if (error.response.data.statusMessage) {
 				errorMessage = error.response.data.statusMessage;
 			} else {
@@ -257,14 +248,11 @@ app.post('/login', loginLimiter, async (req, res) => {
 	}
 });
 
-// ======================================================
-// AGRUPAMENTO E DEFINIÇÃO DAS ROTAS DA API (PROTEGIDAS)
-// ======================================================
 const apiRoutes = express.Router();
 apiRoutes.use(apiLimiter);
 apiRoutes.use(authenticateToken);
 
-// A rota de logout precisa de token, então fica aqui
+// ... (todas as suas rotas da API, como /logout, /get-warehouses, etc., permanecem iguais)
 apiRoutes.post('/logout', (req, res) => {
 	const { username } = req.userSession;
 	logger.info(`Usuário ${username} realizou logout.`);
@@ -468,7 +456,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 			const sanSequencia = sanitizeNumber(sequencia);
 			const sanCodProd = sanitizeNumber(codprod);
 			const sanArmazemDestino = sanitizeNumber(armazemDestino);
-			const sanEnderecoDestino = sanitizeStringForSql(enderecoDestino); // Endereço pode ser não-numérico
+			const sanEnderecoDestino = sanitizeStringForSql(enderecoDestino);
 			const sanQuantidade = sanitizeNumber(quantidade);
 
 			const checkSql = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = '${sanEnderecoDestino}' AND CODARM = ${sanArmazemDestino}`;
@@ -581,32 +569,46 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 	}
 });
 
+
 // ======================================================
 // REGISTRO DE ROTAS E SERVIDOR DE ARQUIVOS
 // ======================================================
-
-// Registra o router da API sob o prefixo /api
 app.use('/api', apiRoutes);
 
-// SERVIR ARQUIVOS DO FRONTEND (deve vir depois das rotas da API)
-app.use(express.static(path.join(__dirname, '')));
-app.get('*', (req, res) => {
-	res.sendFile(path.join(__dirname, 'index.html'));
-});
+// --- MODIFICADO: SERVIR ARQUIVOS DO FRONTEND ---
+if (process.env.NODE_ENV === 'production') {
+    logger.info('Servidor em modo de PRODUÇÃO.');
+    // Serve os arquivos estáticos gerados pelo Vite (da pasta 'dist')
+    app.use(express.static(path.join(__dirname, 'dist')));
+
+    // Para qualquer outra requisição GET, serve o index.html de produção
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    });
+} else {
+    logger.info('Servidor em modo de DESENVOLVIMENTO.');
+    // Serve os arquivos estáticos da raiz do projeto (como antes)
+    app.use(express.static(path.join(__dirname, '')));
+
+    // Para qualquer outra requisição GET, serve o index.html da raiz
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, 'index.html'));
+    });
+}
+// --- FIM DA MODIFICAÇÃO ---
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 
-// ADICIONADO: Função auto-executável para iniciar o servidor
 const startServer = async () => {
 	try {
-		await getSystemBearerToken(); // Tenta obter o token na inicialização
+		await getSystemBearerToken();
 		app.listen(PORT, HOST, () =>
 			logger.info(`✅ Servidor rodando em http://localhost:${PORT}`)
 		);
 	} catch (error) {
 		logger.error(`Falha crítica ao iniciar o servidor: ${error.message}`);
-		process.exit(1); // Encerra o processo com código de erro
+		process.exit(1);
 	}
 };
 
