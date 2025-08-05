@@ -1,7 +1,7 @@
+// src/app.js
 import './style.css';
 import { PROXY_URL } from './config.js';
 
-// app.js
 let currentItemDetails = null;
 
 // ======================================================
@@ -34,7 +34,6 @@ async function authenticatedFetch(endpoint, body = {}) {
         handleLogout();
         throw new Error("Sessão inválida. Por favor, faça login novamente.");
     }
-    // MODIFICADO: Adiciona o prefixo /api a todas as chamadas autenticadas
     const response = await fetch(`${PROXY_URL}/api${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -49,7 +48,7 @@ async function authenticatedFetch(endpoint, body = {}) {
 }
 
 // ======================================================
-// FUNÇÕES PRINCIPAIS (AGORA SIMPLIFICADAS)
+// FUNÇÕES PRINCIPAIS
 // ======================================================
 async function handleLogin() {
     const usernameInput = document.getElementById('login-username');
@@ -61,7 +60,6 @@ async function handleLogin() {
     showLoading(true);
     try {
         const deviceToken = Device.getToken();
-        // A rota de login não tem o prefixo /api, então é chamada diretamente
         const response = await fetch(`${PROXY_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -97,10 +95,8 @@ async function handleLogout(fromInactivity = false) {
     const token = Session.getToken();
     if (token) {
         try {
-            // MODIFICADO: Usa authenticatedFetch para chamar a rota /api/logout, que agora é protegida
             await authenticatedFetch('/logout');
         } catch (e) {
-            // O erro já será tratado pelo authenticatedFetch, mas podemos logar se quisermos
             console.error("Falha ao notificar servidor do logout:", e.message);
         }
     }
@@ -155,15 +151,31 @@ async function handleConsulta() {
     }
 }
 
+// ======================================================
+// FUNÇÃO CORRIGIDA
+// ======================================================
 async function fetchAndShowDetails(sequencia) {
     showLoading(true);
+    // Esconde os botões para evitar que permissões de um item anterior apareçam
+    updateActionButtonsVisibility({ transfer: false, baixa: false, pick: false });
     try {
         const codArm = document.getElementById('armazem-select').value;
-        const details = await authenticatedFetch('/get-item-details', { codArm, sequencia });
+        
+        // Faz as duas chamadas em paralelo para otimizar o tempo de carregamento
+        const [details, permissions] = await Promise.all([
+            authenticatedFetch('/get-item-details', { codArm, sequencia }),
+            authenticatedFetch('/get-permissions') // Chamada de permissões restaurada
+        ]);
+        
+        // Popula os detalhes e atualiza a visibilidade dos botões com os dados recebidos
         populateDetails(details);
+        updateActionButtonsVisibility(permissions);
+        
         switchView('details');
     } catch (error) {
         openConfirmModal(error.message, "Erro");
+        // Se der erro, volta para a tela principal para evitar confusão
+        switchView('main');
     } finally {
         showLoading(false);
     }
@@ -305,7 +317,7 @@ function renderizarCards(rows) {
     resultsContainer.innerHTML = '';
     if (!rows || rows.length === 0) {
         emptyState.classList.remove('hidden');
-        emptyState.querySelector('span').textContent = "Nenhum resultado encontrado para esta busca.";
+        emptyState.querySelector('p').textContent = "Nenhum resultado encontrado";
         return;
     }
     emptyState.classList.add('hidden');
@@ -328,6 +340,7 @@ function populateDetails(detailsArray) {
     const pickingClass = endpic === 'S' ? 'picking-area' : '';
     detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Marca</div><div class="value">${marca || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
 }
+
 function renderHistoryCards(rows) {
     const container = document.getElementById('history-container');
     const emptyState = document.getElementById('history-empty-state');
@@ -352,6 +365,28 @@ function renderHistoryCards(rows) {
         container.appendChild(card);
     });
 }
+
+// ======================================================
+// FUNÇÃO ADICIONADA: Controla a visibilidade dos botões de ação
+// ======================================================
+function updateActionButtonsVisibility(permissions) {
+    const actionButtonsContainer = document.querySelector('.action-buttons');
+    const btnBaixar = document.querySelector('.btn-baixar');
+    const btnTransferir = document.querySelector('.btn-transferir');
+    const btnPicking = document.querySelector('.btn-picking');
+
+    const hasAnyPermission = permissions.baixa || permissions.transfer || permissions.pick;
+
+    if (actionButtonsContainer) {
+        actionButtonsContainer.style.display = hasAnyPermission ? 'flex' : 'none';
+    }
+
+    if (btnBaixar) btnBaixar.style.display = permissions.baixa ? 'flex' : 'none';
+    if (btnTransferir) btnTransferir.style.display = permissions.transfer ? 'flex' : 'none';
+    if (btnPicking) btnPicking.style.display = permissions.pick ? 'flex' : 'none';
+}
+
+
 function formatarData(dataString) {
     if (!dataString || typeof dataString !== 'string') return '';
     const parteData = dataString.split(' ')[0];
@@ -378,7 +413,7 @@ function switchView(viewName) {
     }
 }
 
-function openConfirmModal(message, title = 'Aviso') { document.getElementById('modal-confirm-title').textContent = title; document.getElementById('modal-confirm-message').innerHTML = message; document.getElementById('confirm-modal').classList.remove('hidden'); }
+function openConfirmModal(message, title = 'Aviso') { document.getElementById('modal-confirm-title').textContent = title; document.getElementById('modal-confirm-message').innerHTML = `<p>${message}</p>`; document.getElementById('confirm-modal').classList.remove('hidden'); }
 function closeConfirmModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
 function openBaixaModal() {
     if (!currentItemDetails) return;
