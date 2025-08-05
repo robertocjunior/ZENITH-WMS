@@ -1,4 +1,5 @@
 import './style.css';
+import { PROXY_URL } from './config.js';
 
 // app.js
 let currentItemDetails = null;

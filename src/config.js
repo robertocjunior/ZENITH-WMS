@@ -1,5 +1,6 @@
-// config.js
+// src/config.js
 
-// MODIFICADO: Usamos uma string vazia para que as chamadas `fetch`
-// sejam relativas ao domínio atual (seja localhost ou o endereço do ngrok).
-const PROXY_URL = '';
+// Usamos uma string vazia para que as chamadas `fetch`
+// sejam relativas ao domínio atual.
+// A palavra 'export' é a única adição necessária.
+export const PROXY_URL = '';
