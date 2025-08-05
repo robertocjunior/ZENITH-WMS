@@ -1,4 +1,4 @@
-// server.js
+// server.js (CORRIGIDO)
 require('dotenv').config();
 
 const express = require('express');
@@ -158,7 +158,6 @@ app.post('/login', loginLimiter, async (req, res) => {
         const codUsu = userQueryResponse.responseBody.rows[0][0];
         logger.info(`CODUSU ${codUsu} encontrado para o usuário ${username}.`);
 
-        // ETAPA ADICIONADA: Buscar o NUMREG do usuário na tabela de permissões do App
         const permAppResponse = await callSankhyaService('DbExplorerSP.executeQuery', {
             sql: `SELECT NUMREG FROM AD_APPPERM WHERE CODUSU = ${codUsu}`
         });
@@ -215,9 +214,12 @@ app.post('/login', loginLimiter, async (req, res) => {
         }
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
-        await getSystemBearerToken(true);
+        // ======================= INÍCIO DA CORREÇÃO =======================
+        // A LINHA ABAIXO FOI REMOVIDA. Ela estava substituindo a sessão do usuário
+        // pela sessão do sistema, causando o problema de atribuição do CODUSU.
+        // await getSystemBearerToken(true); 
+        // ======================== FIM DA CORREÇÃO =========================
 
-        // Adiciona o NUMREG ao token de sessão
         const sessionPayload = { username: username, codusu: codUsu, numreg: numReg };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
 
@@ -226,7 +228,7 @@ app.post('/login', loginLimiter, async (req, res) => {
             sessionToken,
             username,
             codusu: codUsu,
-            numreg: numReg, // Retorna o numreg para o frontend
+            numreg: numReg,
             deviceToken: finalDeviceToken,
         });
 
@@ -253,9 +255,6 @@ apiRoutes.post('/logout', (req, res) => {
 	res.status(200).json({ message: 'Logout bem-sucedido.' });
 });
 
-// ========================================================================
-// ROTA DE ARMAZÉNS MODIFICADA PARA FILTRAR POR NUMREG
-// ========================================================================
 apiRoutes.post('/get-warehouses', async (req, res) => {
 	const { username, numreg } = req.userSession;
     logger.http(`Usuário ${username} (NUMREG: ${numreg}) solicitou a lista de armazéns.`);
@@ -265,7 +264,6 @@ apiRoutes.post('/get-warehouses', async (req, res) => {
             throw new Error("NUMREG do usuário não encontrado na sessão.");
         }
         
-        // A consulta agora filtra os armazéns com base na permissão do NUMREG do usuário
 		const sql = `SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM WHERE CODARM IN (SELECT CODARM FROM AD_PERMEND WHERE NUMREG = ${sanitizeNumber(numreg)}) ORDER BY CODARM`;
 		const data = await callSankhyaService('DbExplorerSP.executeQuery', { sql });
 		
@@ -450,7 +448,7 @@ apiRoutes.post('/get-history', async (req, res) => {
 apiRoutes.post('/execute-transaction', async (req, res) => {
 	const { type, payload } = req.body;
 	const { username, codusu } = req.userSession;
-	logger.http(`Usuário ${username} iniciou uma transação do tipo: ${type}.`);
+	logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
 
 	try {
         const permCheckSql = `SELECT BAIXA, TRANSF, PICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
@@ -470,11 +468,13 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
         }
 
 		const hoje = new Date().toLocaleDateString('pt-BR');
+        
 		const cabecalhoData = await callSankhyaService('DatasetSP.save', {
 			entityName: 'AD_BXAEND',
 			fields: ['SEQBAI', 'DATGER', 'USUGER'],
 			records: [{ values: { 1: hoje, 2: codusu } }],
 		});
+
 		if (
 			cabecalhoData.status !== '1' ||
 			!cabecalhoData.responseBody.result?.[0]?.[0]
@@ -485,7 +485,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 		}
 		const seqBai = cabecalhoData.responseBody.result[0][0];
 		logger.info(
-			`Cabeçalho da transação ${seqBai} criado para o usuário ${username}.`
+			`Cabeçalho da transação ${seqBai} criado para o usuário ${username} (USUGER: ${codusu}).`
 		);
 
 		let recordsToSave = [];
@@ -560,16 +560,21 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 
 		for (const record of recordsToSave) {
 			record.values['1'] = seqBai;
+            const { entityName, fields, values } = record;
+
 			const itemData = await callSankhyaService('DatasetSP.save', {
-				...record,
+				entityName,
+                fields,
 				standAlone: false,
-				records: [{ values: record.values }],
+				records: [{ values: values }],
 			});
+
 			if (itemData.status !== '1')
 				throw new Error(
 					itemData.statusMessage || 'Falha ao inserir item da transação.'
 				);
 		}
+
 		logger.info(
 			`${recordsToSave.length} item(ns) salvos para a transação ${seqBai}.`
 		);
