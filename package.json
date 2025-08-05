@@ -1,5 +1,6 @@
 {
-  "name": "Zenith WMS",
+  "name": "zenith-wms",
+  "short_name": "ZWMS",
   "version": "1.0.0",
   "description": "sankhya de endereçamento Zenith",
   "main": "server.js",
