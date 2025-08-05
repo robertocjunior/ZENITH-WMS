@@ -5,7 +5,7 @@ import { PROXY_URL } from './config.js';
 let currentItemDetails = null;
 
 // ======================================================
-// GERENCIAMENTO DA SESSÃO E DISPOSITIVO
+// GERENCIAMENTO DA SESSÃO (COM NUMREG)
 // ======================================================
 const Session = {
     getToken: () => localStorage.getItem('sessionToken'),
@@ -17,6 +17,10 @@ const Session = {
     getCodUsu: () => localStorage.getItem('codusu'),
     saveCodUsu: (codusu) => localStorage.setItem('codusu', codusu),
     clearCodUsu: () => localStorage.removeItem('codusu'),
+    // Adicionado para o NUMREG
+    getNumReg: () => localStorage.getItem('numreg'),
+    saveNumReg: (numreg) => localStorage.setItem('numreg', numreg),
+    clearNumReg: () => localStorage.removeItem('numreg'),
 };
 
 const Device = {
@@ -75,6 +79,7 @@ async function handleLogin() {
         Session.saveToken(data.sessionToken);
         Session.saveUsername(data.username);
         Session.saveCodUsu(data.codusu);
+        Session.saveNumReg(data.numreg); // Salva o NUMREG
         Device.saveToken(data.deviceToken);
 
         switchView('main');
@@ -82,7 +87,10 @@ async function handleLogin() {
         InactivityTimer.start();
         await fetchAndPopulateWarehouses();
     } catch (error) {
-        Session.clearToken(); Session.clearUsername(); Session.clearCodUsu();
+        Session.clearToken(); 
+        Session.clearUsername(); 
+        Session.clearCodUsu();
+        Session.clearNumReg(); // Limpa o NUMREG
         openConfirmModal(error.message, "Falha no Login");
     } finally {
         showLoading(false);
@@ -103,6 +111,7 @@ async function handleLogout(fromInactivity = false) {
     Session.clearToken();
     Session.clearUsername();
     Session.clearCodUsu();
+    Session.clearNumReg(); // Limpa o NUMREG ao sair
     InactivityTimer.clear();
     removeActivityListeners();
     switchView('login');
@@ -117,7 +126,15 @@ async function fetchAndPopulateWarehouses() {
         const armazens = await authenticatedFetch('/get-warehouses');
         const selectPrincipal = document.getElementById('armazem-select');
         const selectModal = document.getElementById('modal-armdes-transfer');
-        selectPrincipal.innerHTML = '<option value="">Selecione um Armazém</option>';
+        
+        if (armazens.length === 0) {
+            selectPrincipal.innerHTML = '<option value="">Nenhum armazém permitido</option>';
+            document.getElementById('btn-consultar').disabled = true; // Desabilita a busca se não há armazéns
+        } else {
+            selectPrincipal.innerHTML = '<option value="">Selecione um Armazém</option>';
+            document.getElementById('btn-consultar').disabled = false;
+        }
+
         selectModal.innerHTML = '';
         armazens.forEach(armazem => {
             const [codArm, descArm] = armazem;
@@ -129,6 +146,8 @@ async function fetchAndPopulateWarehouses() {
         });
     } catch (error) {
         openConfirmModal(error.message, "Erro ao carregar Armazéns");
+        document.getElementById('armazem-select').innerHTML = '<option value="">Erro ao carregar</option>';
+        document.getElementById('btn-consultar').disabled = true;
     } finally {
         showLoading(false);
     }
@@ -151,30 +170,23 @@ async function handleConsulta() {
     }
 }
 
-// ======================================================
-// FUNÇÃO CORRIGIDA
-// ======================================================
 async function fetchAndShowDetails(sequencia) {
     showLoading(true);
-    // Esconde os botões para evitar que permissões de um item anterior apareçam
     updateActionButtonsVisibility({ transfer: false, baixa: false, pick: false });
     try {
         const codArm = document.getElementById('armazem-select').value;
         
-        // Faz as duas chamadas em paralelo para otimizar o tempo de carregamento
         const [details, permissions] = await Promise.all([
             authenticatedFetch('/get-item-details', { codArm, sequencia }),
-            authenticatedFetch('/get-permissions') // Chamada de permissões restaurada
+            authenticatedFetch('/get-permissions')
         ]);
         
-        // Popula os detalhes e atualiza a visibilidade dos botões com os dados recebidos
         populateDetails(details);
         updateActionButtonsVisibility(permissions);
         
         switchView('details');
     } catch (error) {
         openConfirmModal(error.message, "Erro");
-        // Se der erro, volta para a tela principal para evitar confusão
         switchView('main');
     } finally {
         showLoading(false);
@@ -366,9 +378,6 @@ function renderHistoryCards(rows) {
     });
 }
 
-// ======================================================
-// FUNÇÃO ADICIONADA: Controla a visibilidade dos botões de ação
-// ======================================================
 function updateActionButtonsVisibility(permissions) {
     const actionButtonsContainer = document.querySelector('.action-buttons');
     const btnBaixar = document.querySelector('.btn-baixar');

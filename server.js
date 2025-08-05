@@ -90,12 +90,20 @@ async function callSankhyaService(serviceName, requestBody) {
 			{ requestBody },
 			{ headers: { Authorization: `Bearer ${token}` } }
 		);
+        if (response.data.status === '0' && response.data.statusMessage?.includes("Usuário não logado")) {
+            logger.warn('Detectado erro "Usuário não logado". Forçando renovação de token e tentando novamente...');
+            token = await getSystemBearerToken(true);
+            const retryResponse = await axios.post(
+                url,
+                { requestBody },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            return retryResponse.data;
+        }
 		return response.data;
 	} catch (error) {
 		if (error.response && error.response.status === 401) {
-			logger.warn(
-				'Token de sistema possivelmente expirado. Tentando renovar e reenviar a requisição...'
-			);
+			logger.warn('Token de sistema possivelmente expirado. Tentando renovar e reenviar a requisição...');
 			token = await getSystemBearerToken(true);
 			const response = await axios.post(
 				url,
@@ -130,14 +138,14 @@ const authenticateToken = (req, res, next) => {
 	});
 };
 
+
 // ========================================================================
-// ROTA DE LOGIN COM LÓGICA DE RENOVAÇÃO DE TOKEN
+// ROTA DE LOGIN MODIFICADA PARA INCLUIR NUMREG
 // ========================================================================
 app.post('/login', loginLimiter, async (req, res) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
     logger.http(`Tentativa de login para o usuário: ${username}`);
     try {
-        // CORREÇÃO: Garante que cada tentativa de login comece com um token limpo.
         await getSystemBearerToken(true);
 
         const userQueryResponse = await callSankhyaService('DbExplorerSP.executeQuery', {
@@ -149,6 +157,18 @@ app.post('/login', loginLimiter, async (req, res) => {
         }
         const codUsu = userQueryResponse.responseBody.rows[0][0];
         logger.info(`CODUSU ${codUsu} encontrado para o usuário ${username}.`);
+
+        // ETAPA ADICIONADA: Buscar o NUMREG do usuário na tabela de permissões do App
+        const permAppResponse = await callSankhyaService('DbExplorerSP.executeQuery', {
+            sql: `SELECT NUMREG FROM AD_APPPERM WHERE CODUSU = ${codUsu}`
+        });
+
+        if (permAppResponse.status !== '1' || !permAppResponse.responseBody || permAppResponse.responseBody.rows.length === 0) {
+            logger.warn(`Login bloqueado para ${username} (CODUSU: ${codUsu}). Usuário não encontrado na AD_APPPERM.`);
+            throw new Error('Usuário não possui permissão para acessar este aplicativo.');
+        }
+        const numReg = permAppResponse.responseBody.rows[0][0];
+        logger.info(`NUMREG ${numReg} encontrado para o CODUSU ${codUsu}.`);
 
         let finalDeviceToken = clientDeviceToken;
         let deviceIsAuthorized = false;
@@ -163,7 +183,6 @@ app.post('/login', loginLimiter, async (req, res) => {
                     deviceIsAuthorized = true;
                     logger.info(`Dispositivo ${clientDeviceToken} autorizado para CODUSU ${codUsu}.`);
                 } else {
-                    logger.warn(`Login bloqueado para usuário ${username}. Dispositivo ${clientDeviceToken} inativo.`);
                     return res.status(403).json({
                         message: 'Este dispositivo está registrado, mas não está ativo. Contate um administrador.',
                         deviceToken: clientDeviceToken,
@@ -180,7 +199,6 @@ app.post('/login', loginLimiter, async (req, res) => {
                 fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
                 records: [{ values: { 0: codUsu, 1: finalDeviceToken, 2: sanitizeStringForSql(descrDisp), 3: 'N', 4: new Date().toLocaleDateString('pt-BR') } }],
             });
-            logger.info(`Dispositivo novo registrado para usuário ${username}. Token: ${finalDeviceToken}`);
             return res.status(403).json({
                 message: 'Dispositivo novo detectado e registrado. Solicite a um administrador para ativá-lo.',
                 deviceToken: finalDeviceToken,
@@ -197,31 +215,28 @@ app.post('/login', loginLimiter, async (req, res) => {
         }
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
-        // CORREÇÃO: Imediatamente após a contaminação, renova o token de sistema.
-        logger.info('Limpando sessão do sistema após login do usuário...');
         await getSystemBearerToken(true);
 
-        const sessionPayload = { username: username, codusu: codUsu };
+        // Adiciona o NUMREG ao token de sessão
+        const sessionPayload = { username: username, codusu: codUsu, numreg: numReg };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
+
         logger.info(`Usuário ${username} logado com sucesso.`);
         res.json({
             sessionToken,
             username,
             codusu: codUsu,
+            numreg: numReg, // Retorna o numreg para o frontend
             deviceToken: finalDeviceToken,
         });
 
     } catch (error) {
         let errorMessage = 'Erro durante o processo de login.';
         if (error.response && error.response.data) {
-            const sankhyaError = error.response.data.error;
-            if (sankhyaError && sankhyaError.descricao) { errorMessage = sankhyaError.descricao; } 
-            else if (error.response.data.statusMessage) { errorMessage = error.response.data.statusMessage; } 
-            else { errorMessage = JSON.stringify(error.response.data); }
+            errorMessage = error.response.data.statusMessage || JSON.stringify(error.response.data);
         } else if (error.message) {
             errorMessage = error.message;
         }
-
         logger.error(`Falha no login para ${username}: ${errorMessage}`);
         res.status(401).json({ message: errorMessage });
     }
@@ -238,17 +253,30 @@ apiRoutes.post('/logout', (req, res) => {
 	res.status(200).json({ message: 'Logout bem-sucedido.' });
 });
 
+// ========================================================================
+// ROTA DE ARMAZÉNS MODIFICADA PARA FILTRAR POR NUMREG
+// ========================================================================
 apiRoutes.post('/get-warehouses', async (req, res) => {
-	logger.http(
-		`Usuário ${req.userSession.username} solicitou a lista de armazéns.`
-	);
+	const { username, numreg } = req.userSession;
+    logger.http(`Usuário ${username} (NUMREG: ${numreg}) solicitou a lista de armazéns.`);
+
 	try {
-		const sql = 'SELECT CODARM, CODARM || \'-\' || DESARM FROM AD_CADARM ORDER BY CODARM';
+        if (!numreg) {
+            throw new Error("NUMREG do usuário não encontrado na sessão.");
+        }
+        
+        // A consulta agora filtra os armazéns com base na permissão do NUMREG do usuário
+		const sql = `SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM WHERE CODARM IN (SELECT CODARM FROM AD_PERMEND WHERE NUMREG = ${sanitizeNumber(numreg)}) ORDER BY CODARM`;
 		const data = await callSankhyaService('DbExplorerSP.executeQuery', { sql });
-		if (data.status !== '1') throw new Error(data.statusMessage);
+		
+        if (data.status !== '1') {
+            throw new Error(data.statusMessage || "Falha ao buscar armazéns.");
+        }
+
 		res.json(data.responseBody.rows);
+
 	} catch (error) {
-		logger.error(`Erro em /get-warehouses: ${error.message}`);
+		logger.error(`Erro em /get-warehouses para ${username}: ${error.message}`);
 		res.status(500).json({ message: 'Ocorreu um erro ao buscar os armazéns.' });
 	}
 });
@@ -260,7 +288,7 @@ apiRoutes.post('/get-permissions', async (req, res) => {
         const sql = `SELECT BAIXA, TRANSF, PICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
         const data = await callSankhyaService('DbExplorerSP.executeQuery', { sql });
 
-        if (data.status !== '1') {
+        if (data.status !== '1' || !data.responseBody) {
             throw new Error(data.statusMessage || 'Falha ao consultar permissões.');
         }
 
@@ -353,7 +381,7 @@ apiRoutes.post('/get-item-details', async (req, res) => {
 		const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
 		const data = await callSankhyaService('DbExplorerSP.executeQuery', { sql });
 
-		if (data.status === '1' && data.responseBody.rows.length > 0) {
+		if (data.status === '1' && data.responseBody?.rows.length > 0) {
 			res.json(data.responseBody.rows[0]);
 		} else {
 			throw new Error('Produto não encontrado ou erro na consulta.');
@@ -427,8 +455,8 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 	try {
         const permCheckSql = `SELECT BAIXA, TRANSF, PICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
         const permData = await callSankhyaService('DbExplorerSP.executeQuery', { sql: permCheckSql });
-        if (permData.status !== '1' || permData.responseBody.rows.length === 0) {
-            throw new Error('Falha ao verificar permissão final. Operação cancelada.');
+        if (!permData.responseBody || permData.responseBody.rows.length === 0) {
+            throw new Error('Você não tem permissão para esta ação.');
         }
         const perms = permData.responseBody.rows[0];
         const hasPermission = 
@@ -554,6 +582,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 			});
 			if (
 				pollData.status === '1' &&
+				pollData.responseBody &&
 				parseInt(pollData.responseBody.rows[0][0], 10) >= recordsToSave.length
 			) {
 				isPopulated = true;
