@@ -1,4 +1,4 @@
-// server.js (CORRIGIDO)
+// server.js
 require('dotenv').config();
 
 const express = require('express');
@@ -52,6 +52,18 @@ function sanitizeNumber(num) {
     return parsed;
 }
 
+// [NOVA FUNÇÃO UTILITÁRIA] Converte data do formato 'DDMMYYYY HH:mm:ss.s' para 'DD/MM/YYYY'
+function formatDbDateToApi(dbDate) {
+    if (!dbDate || typeof dbDate !== 'string') return null;
+    const datePart = dbDate.split(' ')[0];
+    if (datePart.length !== 8) return datePart; // Retorna como está se não for o formato esperado
+    const day = datePart.substring(0, 2);
+    const month = datePart.substring(2, 4);
+    const year = datePart.substring(4, 8);
+    return `${day}/${month}/${year}`;
+}
+
+
 async function getSystemBearerToken(forceRefresh = false) {
     if (systemBearerToken && !forceRefresh) return systemBearerToken;
     try {
@@ -80,16 +92,9 @@ async function getSystemBearerToken(forceRefresh = false) {
     }
 }
 
-// ========================= ALTERAÇÃO INICIA AQUI =========================
-/**
- * [NOVA FUNÇÃO]
- * Executa uma consulta SELECT (DbExplorerSP.executeQuery) usando uma sessão de sistema isolada.
- * Garante que as leituras de dados sempre tenham a permissão máxima do usuário do .env.
- */
 async function callSankhyaAsSystem(serviceName, requestBody) {
     logger.http(`Executando consulta como usuário de sistema: ${serviceName}`);
     try {
-        // 1. Faz login como usuário de sistema para obter um token limpo e com permissão total.
         const loginResponse = await axios.post(
             `${SANKHYA_API_URL}/login`,
             {},
@@ -106,20 +111,15 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
         if (!freshSystemToken) {
             throw new Error('Falha ao obter token de sistema para a consulta.');
         }
-
-        // 2. Executa o serviço com o token de sistema recém-obtido.
         const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
         const serviceResponse = await axios.post(
             url,
             { requestBody },
             { headers: { Authorization: `Bearer ${freshSystemToken}` } }
         );
-
-        // 3. Faz logout para invalidar o token temporário (boa prática).
         await axios.post(`${SANKHYA_API_URL}/logout`, {}, {
             headers: { Authorization: `Bearer ${freshSystemToken}` }
         });
-
         return serviceResponse.data;
     } catch (error) {
         const errorMessage = error.response?.data?.statusMessage || `Falha ao executar ${serviceName} como sistema.`;
@@ -127,14 +127,7 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
         throw new Error(errorMessage);
     }
 }
-// ========================= ALTERAÇÃO TERMINA AQUI =========================
 
-
-/**
- * [FUNÇÃO ORIGINAL MANTIDA]
- * Usada para operações de sessão do usuário (login, baixa, transferência).
- * Utiliza um token que se associa à sessão do usuário logado.
- */
 async function callSankhyaService(serviceName, requestBody) {
     let token = await getSystemBearerToken();
     const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
@@ -198,7 +191,6 @@ app.post('/login', loginLimiter, async (req, res) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
     logger.http(`Tentativa de login para o usuário: ${username}`);
     try {
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
         const userQueryResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
         });
@@ -209,7 +201,6 @@ app.post('/login', loginLimiter, async (req, res) => {
         const codUsu = userQueryResponse.responseBody.rows[0][0];
         logger.info(`CODUSU ${codUsu} encontrado para o usuário ${username}.`);
 
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
         const permAppResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT NUMREG FROM AD_APPPERM WHERE CODUSU = ${codUsu}`
         });
@@ -225,7 +216,6 @@ app.post('/login', loginLimiter, async (req, res) => {
         let deviceIsAuthorized = false;
 
         if (clientDeviceToken) {
-            // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
             const deviceCheckResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
                 sql: `SELECT ATIVO FROM AD_DISPAUT WHERE CODUSU = ${codUsu} AND DEVICETOKEN = '${sanitizeStringForSql(clientDeviceToken)}'`,
             });
@@ -246,7 +236,6 @@ app.post('/login', loginLimiter, async (req, res) => {
         if (!deviceIsAuthorized) {
             finalDeviceToken = crypto.randomBytes(20).toString('hex');
             const descrDisp = req.headers['user-agent'] ? req.headers['user-agent'].substring(0, 100) : 'Dispositivo Web';
-            // A escrita continua usando a função original
             await callSankhyaService('DatasetSP.save', {
                 entityName: 'AD_DISPAUT',
                 fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
@@ -258,7 +247,6 @@ app.post('/login', loginLimiter, async (req, res) => {
             });
         }
         
-        // O login do usuário continua usando a função original para atrelar a sessão
         const loginResponse = await callSankhyaService('MobileLoginSP.login', {
             NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
@@ -314,7 +302,6 @@ apiRoutes.post('/get-warehouses', async (req, res) => {
         }
         
         const sql = `SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM WHERE CODARM IN (SELECT CODARM FROM AD_PERMEND WHERE NUMREG = ${sanitizeNumber(numreg)}) ORDER BY CODARM`;
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         
         if (data.status !== '1') {
@@ -333,8 +320,7 @@ apiRoutes.post('/get-permissions', async (req, res) => {
     const { username, codusu } = req.userSession;
     logger.http(`Verificando permissões para o usuário ${username} (CODUSU: ${codusu}).`);
     try {
-        const sql = `SELECT BAIXA, TRANSF, PICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
+        const sql = `SELECT BAIXA, TRANSF, PICK, CORRE FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
 
         if (data.status !== '1' || !data.responseBody) {
@@ -343,17 +329,18 @@ apiRoutes.post('/get-permissions', async (req, res) => {
 
         if (data.responseBody.rows.length === 0) {
             logger.warn(`Nenhuma permissão encontrada para o usuário ${username}. Retornando acesso negado a todas as funções.`);
-            return res.json({ baixa: false, transfer: false, pick: false });
+            return res.json({ baixa: false, transfer: false, pick: false, corre: false });
         }
 
         const perms = data.responseBody.rows[0];
         const permissions = {
             baixa: perms[0] === 'S',
             transfer: perms[1] === 'S',
-            pick: perms[2] === 'S'
+            pick: perms[2] === 'S',
+            corre: perms[3] === 'S'
         };
         
-        logger.info(`Permissões para ${username}: Baixa=${permissions.baixa}, Transfer=${permissions.transfer}, Pick=${permissions.pick}`);
+        logger.info(`Permissões para ${username}: Baixa=${permissions.baixa}, Transfer=${permissions.transfer}, Pick=${permissions.pick}, Corre=${permissions.corre}`);
         res.json(permissions);
 
     } catch (error) {
@@ -406,7 +393,6 @@ apiRoutes.post('/search-items', async (req, res) => {
         }
         sqlFinal += orderByClause;
 
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: sqlFinal,
         });
@@ -428,7 +414,6 @@ apiRoutes.post('/get-item-details', async (req, res) => {
             `Usuário ${req.userSession.username} solicitou detalhes da sequência ${sequencia} no armazém ${codArm}.`
         );
         const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
 
         if (data.status === '1' && data.responseBody?.rows.length > 0) {
@@ -455,7 +440,6 @@ apiRoutes.post('/get-picking-locations', async (req, res) => {
         );
 
         const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${codarm} AND ENDE.CODPROD = ${codprod} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sequencia} ORDER BY ENDE.SEQEND`;
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         if (data.status !== '1') throw new Error(data.statusMessage);
         res.json(data.responseBody.rows);
@@ -499,7 +483,6 @@ apiRoutes.post('/get-history', async (req, res) => {
                 WHERE BXA.USUGER = ${codusu} AND TRUNC(BXA.DATGER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
             )
             SELECT SEQBAI, HORA, CODARM, SEQEND, ARMDES, ENDDES, CODPROD, DESCRPROD, MARCA, DERIVACAO FROM RankedItems WHERE rn = 1 ORDER BY DATGER DESC`;
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         if (data.status !== '1')
             throw new Error(data.statusMessage || 'Falha ao carregar o histórico.');
@@ -519,8 +502,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
     logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
 
     try {
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
-        const permCheckSql = `SELECT BAIXA, TRANSF, PICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+        const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
         const permData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: permCheckSql });
         if (!permData.responseBody || permData.responseBody.rows.length === 0) {
             throw new Error('Você não tem permissão para esta ação.');
@@ -529,16 +511,61 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
         const hasPermission = 
             (type === 'baixa' && perms[0] === 'S') ||
             (type === 'transferencia' && perms[1] === 'S') ||
-            (type === 'picking' && perms[2] === 'S');
+            (type === 'picking' && perms[2] === 'S') ||
+            (type === 'correcao' && perms[3] === 'S');
 
         if (!hasPermission) {
             logger.warn(`Tentativa de execução de '${type}' bloqueada por falta de permissão para ${username}.`);
             return res.status(403).json({ message: 'Você não tem permissão para executar esta ação.' });
         }
 
+        if (type === 'correcao') {
+            const { codarm, sequencia, newQuantity } = payload;
+            
+            const itemSql = `SELECT CODPROD, CODVOL, DATENT, DATVAL FROM AD_CADEND WHERE CODARM = ${sanitizeNumber(codarm)} AND SEQEND = ${sanitizeNumber(sequencia)}`;
+            const itemData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: itemSql });
+
+            if (!itemData.responseBody || itemData.responseBody.rows.length === 0) {
+                throw new Error('Item não encontrado para correção.');
+            }
+
+            const [codprod, codvol, datent, datval] = itemData.responseBody.rows[0];
+            
+            const scriptRequestBody = {
+                runScript: {
+                    actionID: "97",
+                    refreshType: "SEL",
+                    params: {
+                        param: [
+                            { type: "S", paramName: "CODPROD", $: codprod },
+                            { type: "S", paramName: "CODVOL", $: codvol || '' },
+                            { type: "F", paramName: "QTDPRO", $: newQuantity },
+                            { type: "D", paramName: "DATENT", $: formatDbDateToApi(datent) },
+                            { type: "D", paramName: "DATVAL", $: formatDbDateToApi(datval) }
+                        ]
+                    },
+                    rows: {
+                        row: [{
+                            field: [
+                                { fieldName: "CODARM", $: codarm.toString() },
+                                { fieldName: "SEQEND", $: sequencia.toString() }
+                            ]
+                        }]
+                    }
+                },
+                clientEventList: {
+                    clientEvent: [{ "$": "br.com.sankhya.actionbutton.clientconfirm" }]
+                }
+            };
+            
+            const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
+            
+            logger.info(`Correção (actionID 97) executada com sucesso para SEQEND ${sequencia} pelo usuário ${username}.`);
+            return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
+        }
+
         const hoje = new Date().toLocaleDateString('pt-BR');
         
-        // A escrita continua usando a função original para manter a sessão do usuário
         const cabecalhoData = await callSankhyaService('DatasetSP.save', {
             entityName: 'AD_BXAEND',
             fields: ['SEQBAI', 'DATGER', 'USUGER'],
@@ -585,7 +612,6 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
             const sanEnderecoDestino = sanitizeStringForSql(enderecoDestino);
             const sanQuantidade = sanitizeNumber(quantidade);
 
-            // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
             const checkSql = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = '${sanEnderecoDestino}' AND CODARM = ${sanArmazemDestino}`;
             const checkData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
                 sql: checkSql,
@@ -633,7 +659,6 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
             record.values['1'] = seqBai;
             const { entityName, fields, values } = record;
 
-            // A escrita continua usando a função original para manter a sessão do usuário
             const itemData = await callSankhyaService('DatasetSP.save', {
                 entityName,
                 fields,
@@ -651,7 +676,6 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
             `${recordsToSave.length} item(ns) salvos para a transação ${seqBai}.`
         );
 
-        // [ALTERAÇÃO] Usa a nova função para as consultas SELECT
         const pollSql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
         let isPopulated = false;
         for (let i = 0; i < 10; i++) {
@@ -674,7 +698,6 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
             `Polling de CODPROD bem-sucedido para a transação ${seqBai}.`
         );
 
-        // A execução da procedure continua usando a função original para manter a sessão do usuário
         const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', {
             stpCall: {
                 actionID: '20',

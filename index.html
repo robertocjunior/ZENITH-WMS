@@ -75,6 +75,7 @@
                 <button class="btn-action btn-baixar">Baixar</button>
                 <button class="btn-action btn-transferir">Transferir</button>
                 <button class="btn-action btn-picking">Picking</button>
+                <button class="btn-action btn-correcao">Correção</button>
             </div>
         </div>
 
@@ -174,6 +175,23 @@
             </div>
         </div>
     </div>
+
+    <!-- [NOVO MODAL] -->
+    <div id="correcao-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Corrigir Quantidade</h3>
+            <p>Quantidade Atual: <strong id="modal-qtd-disponivel-correcao"></strong></p>
+            <div class="modal-input-group">
+                <label for="modal-qtd-correcao">Nova Quantidade:</label>
+                <input type="number" id="modal-qtd-correcao" placeholder="0" min="0" step="1" autocomplete="off">
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cancelar-correcao" class="btn-modal btn-cancel">Cancelar</button>
+                <button id="btn-confirmar-correcao" class="btn-modal btn-confirm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="loading" class="loading-indicator hidden">
         <div class="spinner"></div>
         <p>Carregando...</p>

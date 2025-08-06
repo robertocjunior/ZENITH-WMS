@@ -1,12 +1,9 @@
-// src/app.js (MODIFICADO)
+// src/app.js
 import './style.css';
 import { PROXY_URL } from './config.js';
 
 let currentItemDetails = null;
 
-// ======================================================
-// GERENCIAMENTO DA SESSÃO (COM NUMREG)
-// ======================================================
 const Session = {
     getToken: () => localStorage.getItem('sessionToken'),
     saveToken: (token) => localStorage.setItem('sessionToken', token),
@@ -17,7 +14,6 @@ const Session = {
     getCodUsu: () => localStorage.getItem('codusu'),
     saveCodUsu: (codusu) => localStorage.setItem('codusu', codusu),
     clearCodUsu: () => localStorage.removeItem('codusu'),
-    // Adicionado para o NUMREG
     getNumReg: () => localStorage.getItem('numreg'),
     saveNumReg: (numreg) => localStorage.setItem('numreg', numreg),
     clearNumReg: () => localStorage.removeItem('numreg'),
@@ -29,9 +25,6 @@ const Device = {
     clearToken: () => localStorage.removeItem('deviceToken')
 };
 
-// ======================================================
-// LÓGICA DE API CENTRALIZADA
-// ======================================================
 async function authenticatedFetch(endpoint, body = {}) {
     const token = Session.getToken();
     if (!token) {
@@ -51,9 +44,6 @@ async function authenticatedFetch(endpoint, body = {}) {
     return data;
 }
 
-// ======================================================
-// FUNÇÕES PRINCIPAIS
-// ======================================================
 async function handleLogin() {
     const usernameInput = document.getElementById('login-username');
     const passwordInput = document.getElementById('login-password');
@@ -79,7 +69,7 @@ async function handleLogin() {
         Session.saveToken(data.sessionToken);
         Session.saveUsername(data.username);
         Session.saveCodUsu(data.codusu);
-        Session.saveNumReg(data.numreg); // Salva o NUMREG
+        Session.saveNumReg(data.numreg);
         Device.saveToken(data.deviceToken);
 
         switchView('main');
@@ -90,7 +80,7 @@ async function handleLogin() {
         Session.clearToken(); 
         Session.clearUsername(); 
         Session.clearCodUsu();
-        Session.clearNumReg(); // Limpa o NUMREG
+        Session.clearNumReg();
         openConfirmModal(error.message, "Falha no Login");
     } finally {
         showLoading(false);
@@ -111,7 +101,7 @@ async function handleLogout(fromInactivity = false) {
     Session.clearToken();
     Session.clearUsername();
     Session.clearCodUsu();
-    Session.clearNumReg(); // Limpa o NUMREG ao sair
+    Session.clearNumReg();
     InactivityTimer.clear();
     removeActivityListeners();
     switchView('login');
@@ -129,7 +119,7 @@ async function fetchAndPopulateWarehouses() {
         
         if (armazens.length === 0) {
             selectPrincipal.innerHTML = '<option value="">Nenhum armazém permitido</option>';
-            document.getElementById('btn-consultar').disabled = true; // Desabilita a busca se não há armazéns
+            document.getElementById('btn-consultar').disabled = true;
         } else {
             selectPrincipal.innerHTML = '<option value="">Selecione um Armazém</option>';
             document.getElementById('btn-consultar').disabled = false;
@@ -172,7 +162,7 @@ async function handleConsulta() {
 
 async function fetchAndShowDetails(sequencia) {
     showLoading(true);
-    updateActionButtonsVisibility({ transfer: false, baixa: false, pick: false });
+    updateActionButtonsVisibility({ transfer: false, baixa: false, pick: false, corre: false });
     try {
         const codArm = document.getElementById('armazem-select').value;
         
@@ -288,6 +278,34 @@ async function handlePicking() {
     }
 }
 
+async function handleCorrecao() {
+    const newQuantityInput = document.getElementById('modal-qtd-correcao');
+    const newQuantity = parseFloat(newQuantityInput.value);
+
+    if (isNaN(newQuantity) || newQuantity < 0) {
+        return openConfirmModal("A nova quantidade inserida é inválida.");
+    }
+    
+    closeCorrecaoModal();
+    showLoading(true);
+
+    try {
+        const payload = {
+            codarm: currentItemDetails.codarm,
+            sequencia: currentItemDetails.sequencia,
+            newQuantity: newQuantity
+        };
+        const result = await authenticatedFetch('/execute-transaction', { type: 'correcao', payload });
+        openConfirmModal(result.message, 'Sucesso!');
+        switchView('main');
+        await handleConsulta();
+    } catch (error) {
+        openConfirmModal(error.message, "Falha na Correção");
+    } finally {
+        showLoading(false);
+    }
+}
+
 async function openPickingModal() {
     if (!currentItemDetails) return;
     document.getElementById('modal-qtd-disponivel-picking').textContent = currentItemDetails.qtdCompleta;
@@ -320,9 +338,6 @@ async function openPickingModal() {
     }
 }
 
-// ======================================================
-// FUNÇÕES DE UI E RENDERIZAÇÃO
-// ======================================================
 function renderizarCards(rows) {
     const resultsContainer = document.getElementById('results-container');
     const emptyState = document.getElementById('empty-state');
@@ -334,17 +349,14 @@ function renderizarCards(rows) {
     }
     emptyState.classList.add('hidden');
     rows.forEach(row => {
-        // ========================= ALTERAÇÃO AQUI =========================
-        // Recebendo a nova coluna 'derivacao' que veio do backend
         const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic, qtdCompleta, derivacao] = row;
         const card = document.createElement('div');
         card.className = 'result-card';
         if (endpic === 'S') card.classList.add('picking-area');
 
-        // Montando a descrição completa: Descrição - Marca - Derivação
         let displayDesc = descrprod || 'Sem descrição';
         if (marca) displayDesc += ` - ${marca}`;
-        if (derivacao) displayDesc += ` - ${derivacao}`; // Adiciona a derivação
+        if (derivacao) displayDesc += ` - ${derivacao}`;
 
         card.innerHTML = `<div class="card-header"><p>Seq: <span>${sequencia}</span></p><p>Rua: <span>${rua}</span></p><p>Prédio: <span>${predio}</span></p></div><div class="card-body"><p class="product-desc">${displayDesc}</p></div><div class="card-footer"><span class="product-code">Cód: ${codprod}</span><span class="product-quantity">Qtd: <strong>${qtdCompleta}</strong></span><span class="product-validity">Val: ${formatarData(datval)}</span></div>`;
         card.addEventListener('click', () => fetchAndShowDetails(sequencia));
@@ -352,14 +364,11 @@ function renderizarCards(rows) {
     });
 }
 function populateDetails(detailsArray) {
-    // ========================= ALTERAÇÃO AQUI =========================
-    // Recebendo a nova coluna 'derivacao' para a tela de detalhes
     const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta, derivacao] = detailsArray;
     currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta, derivacao };
     const detailsContent = document.getElementById('details-content');
     const pickingClass = endpic === 'S' ? 'picking-area' : '';
 
-    // Montando a descrição principal completa para os detalhes
     let mainDesc = descrprod || 'Produto sem descrição';
     if (marca) mainDesc += ` - ${marca}`;
 
@@ -376,13 +385,10 @@ function renderHistoryCards(rows) {
     }
     emptyState.classList.add('hidden');
     rows.forEach(row => {
-        // ========================= ALTERAÇÃO AQUI =========================
-        // Recebendo as novas colunas 'marca' e 'derivacao'
         const [seqbai, hora, codarm, seqend, armdes, enddes, codprod, descrprod, marca, derivacao] = row;
         const card = document.createElement('div');
         card.className = 'history-card';
 
-        // Montando a descrição completa para o histórico
         let productDisplay = descrprod || 'Produto';
         if (marca) productDisplay += ` - ${marca}`;
         if (derivacao) productDisplay += ` - ${derivacao}`;
@@ -404,8 +410,9 @@ function updateActionButtonsVisibility(permissions) {
     const btnBaixar = document.querySelector('.btn-baixar');
     const btnTransferir = document.querySelector('.btn-transferir');
     const btnPicking = document.querySelector('.btn-picking');
+    const btnCorrecao = document.querySelector('.btn-correcao');
 
-    const hasAnyPermission = permissions.baixa || permissions.transfer || permissions.pick;
+    const hasAnyPermission = permissions.baixa || permissions.transfer || permissions.pick || permissions.corre;
 
     if (actionButtonsContainer) {
         actionButtonsContainer.style.display = hasAnyPermission ? 'flex' : 'none';
@@ -414,6 +421,7 @@ function updateActionButtonsVisibility(permissions) {
     if (btnBaixar) btnBaixar.style.display = permissions.baixa ? 'flex' : 'none';
     if (btnTransferir) btnTransferir.style.display = permissions.transfer ? 'flex' : 'none';
     if (btnPicking) btnPicking.style.display = permissions.pick ? 'flex' : 'none';
+    if (btnCorrecao) btnCorrecao.style.display = permissions.corre ? 'flex' : 'none';
 }
 
 
@@ -465,6 +473,19 @@ function openTransferModal() {
 }
 function closeTransferModal() { document.getElementById('transfer-modal').classList.add('hidden'); }
 function closePickingModal() { document.getElementById('picking-modal').classList.add('hidden'); }
+
+function openCorrecaoModal() {
+    if (!currentItemDetails) return;
+    document.getElementById('modal-qtd-disponivel-correcao').textContent = currentItemDetails.qtdCompleta;
+    const qtdInput = document.getElementById('modal-qtd-correcao');
+    // [ALTERAÇÃO] Limpa o campo para o usuário preencher manualmente
+    qtdInput.value = ''; 
+    document.getElementById('correcao-modal').classList.remove('hidden');
+}
+function closeCorrecaoModal() { 
+    document.getElementById('correcao-modal').classList.add('hidden'); 
+}
+
 const loading = document.getElementById('loading');
 function showLoading(show) { loading.classList.toggle('hidden', !show); }
 function openProfilePanel() { document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-panel').classList.add('active'); document.getElementById('profile-user-info').textContent = `${Session.getCodUsu()} - ${Session.getUsername()}`; document.getElementById('session-hash').textContent = Session.getToken(); }
@@ -475,9 +496,7 @@ let throttleTimeout = null;
 const throttledReset = () => { if (throttleTimeout) return; throttleTimeout = setTimeout(() => { InactivityTimer.reset(); throttleTimeout = null; }, 500); };
 function setupActivityListeners() { activityEvents.forEach(event => window.addEventListener(event, throttledReset)); }
 function removeActivityListeners() { activityEvents.forEach(event => window.removeEventListener(event, throttledReset)); }
-// ======================================================
-// INICIALIZAÇÃO E EVENT LISTENERS
-// ======================================================
+
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-login').addEventListener('click', handleLogin);
     document.getElementById('login-password').addEventListener('keyup', (e) => e.key === 'Enter' && handleLogin());
@@ -489,12 +508,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('.btn-baixar').addEventListener('click', openBaixaModal);
     document.querySelector('.btn-transferir').addEventListener('click', openTransferModal);
     document.querySelector('.btn-picking').addEventListener('click', openPickingModal);
+    document.querySelector('.btn-correcao').addEventListener('click', openCorrecaoModal);
     document.getElementById('btn-confirmar-baixa').addEventListener('click', handleBaixa);
     document.getElementById('btn-confirmar-transfer').addEventListener('click', handleTransfer);
     document.getElementById('btn-confirmar-picking').addEventListener('click', handlePicking);
+    document.getElementById('btn-confirmar-correcao').addEventListener('click', handleCorrecao);
     document.getElementById('btn-cancelar-baixa').addEventListener('click', closeBaixaModal);
     document.getElementById('btn-cancelar-transfer').addEventListener('click', closeTransferModal);
     document.getElementById('btn-cancelar-picking').addEventListener('click', closePickingModal);
+    document.getElementById('btn-cancelar-correcao').addEventListener('click', closeCorrecaoModal);
     document.getElementById('btn-close-confirm').addEventListener('click', closeConfirmModal);
     document.getElementById('btn-open-profile').addEventListener('click', openProfilePanel);
     document.getElementById('btn-close-profile').addEventListener('click', closeProfilePanel);
