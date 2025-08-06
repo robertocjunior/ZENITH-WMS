@@ -48,7 +48,7 @@ web_modules/
 # TypeScript cache
 *.tsbuildinfo
 
-# Optional npm cache directory
+# Optional npm cache
 .npm
 
 # Optional eslint cache
@@ -94,7 +94,7 @@ out
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js
 # https://nextjs.org/blog/next-9-1#public-directory-support
-# public
+public
 
 # vuepress build output
 .vuepress/dist
@@ -125,7 +125,7 @@ assets
 # TernJS port file
 .tern-port
 
-# Stores VSCode versions used for testing VSCode extensions
+# Stores VSCode versions for testing VSCode extensions
 .vscode-test
 
 # yarn v2
@@ -150,3 +150,6 @@ yarn-error.log*
 # Ignorar arquivos de chaves de segurança
 rsa_private_key.pem
 rsa_public_key.pem
+
+# Ignora qualquer pasta chamada 'assets' no projeto
+assets/
