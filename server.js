@@ -460,9 +460,7 @@ apiRoutes.post('/get-history', async (req, res) => {
             day: '2-digit',
         });
         
-        // [ALTERAÇÃO] Query modificada para unir o histórico de movimentação com o de correção
         const sql = `
-            -- Parte 1: Histórico de Movimentações (Baixa, Transferência, Picking)
             SELECT 
                 'MOV' AS TIPO,
                 BXA.DATGER AS DATA_ORDEM,
@@ -475,8 +473,8 @@ apiRoutes.post('/get-history', async (req, res) => {
                 PRO.DESCRPROD,
                 PRO.MARCA,
                 (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = IBX.CODPROD AND V.CODVOL = PRO.CODVOL) AS DERIVACAO,
-                NULL AS QUANT_ANT, -- Coluna placeholder
-                NULL AS QTD_ATUAL, -- Coluna placeholder
+                NULL AS QUANT_ANT,
+                NULL AS QTD_ATUAL,
                 BXA.SEQBAI AS ID_OPERACAO
             FROM AD_BXAEND BXA 
             JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI 
@@ -485,15 +483,14 @@ apiRoutes.post('/get-history', async (req, res) => {
 
             UNION ALL
 
-            -- Parte 2: Histórico de Correções
             SELECT 
                 'CORRECAO' AS TIPO,
-                H.DHMOV AS DATA_ORDEM,
-                TO_CHAR(H.DHMOV, 'HH24:MI:SS') AS HORA,
+                H.DTHOPER AS DATA_ORDEM,
+                TO_CHAR(H.DTHOPER, 'HH24:MI:SS') AS HORA,
                 H.CODARM,
                 H.SEQEND,
-                NULL AS ARMDES, -- Coluna placeholder
-                NULL AS ENDDES, -- Coluna placeholder
+                NULL AS ARMDES,
+                NULL AS ENDDES,
                 H.CODPROD,
                 (SELECT P.DESCRPROD FROM TGFPRO P WHERE P.CODPROD = H.CODPROD) AS DESCRPROD,
                 H.MARCA,
@@ -502,7 +499,7 @@ apiRoutes.post('/get-history', async (req, res) => {
                 H.QATUAL AS QTD_ATUAL,
                 H.NUMUNICO AS ID_OPERACAO
             FROM AD_HISTENDAPP H
-            WHERE H.CODUSU = ${codusu} AND TRUNC(H.DHMOV) = TO_DATE('${hoje}', 'DD/MM/YYYY')
+            WHERE H.CODUSU = ${codusu} AND TRUNC(H.DTHOPER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
             
             ORDER BY DATA_ORDEM DESC
         `;
@@ -546,7 +543,6 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
         if (type === 'correcao') {
             const { codarm, sequencia, newQuantity } = payload;
             
-            // [ALTERAÇÃO] Busca mais campos para salvar no histórico
             const itemSql = `
                 SELECT 
                     DEND.CODPROD, DEND.CODVOL, DEND.DATENT, DEND.DATVAL, DEND.QTDPRO,
@@ -593,10 +589,9 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
             
             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
             
-            // [NOVO] Insere o registro de histórico após a correção bem-sucedida
             const histRecord = {
                 entityName: 'AD_HISTENDAPP',
-                fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'],
+                fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU', 'DTHOPER'],
                 records: [{
                     values: {
                         0: codarm,
@@ -607,7 +602,8 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
                         5: derivacao,
                         6: qtdAnterior,
                         7: newQuantity,
-                        8: codusu
+                        8: codusu,
+                        9: new Date() // Preenche o novo campo de data/hora
                     }
                 }]
             };
