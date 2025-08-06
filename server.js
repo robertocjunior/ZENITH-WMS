@@ -214,12 +214,6 @@ app.post('/login', loginLimiter, async (req, res) => {
         }
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
-        // ======================= INÍCIO DA CORREÇÃO =======================
-        // A LINHA ABAIXO FOI REMOVIDA. Ela estava substituindo a sessão do usuário
-        // pela sessão do sistema, causando o problema de atribuição do CODUSU.
-        // await getSystemBearerToken(true); 
-        // ======================== FIM DA CORREÇÃO =========================
-
         const sessionPayload = { username: username, codusu: codUsu, numreg: numReg };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
 
@@ -322,8 +316,8 @@ apiRoutes.post('/search-items', async (req, res) => {
 				filtro || 'todos'
 			}' no armazém ${codArm}.`
 		);
-
-		let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
+        
+		let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
 		let orderByClause = '';
 		if (filtro) {
 			const filtroLimpo = filtro.trim();
@@ -375,8 +369,7 @@ apiRoutes.post('/get-item-details', async (req, res) => {
 		logger.http(
 			`Usuário ${req.userSession.username} solicitou detalhes da sequência ${sequencia} no armazém ${codArm}.`
 		);
-
-		const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
+		const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm} AND ENDE.SEQEND = ${sequencia}`;
 		const data = await callSankhyaService('DbExplorerSP.executeQuery', { sql });
 
 		if (data.status === '1' && data.responseBody?.rows.length > 0) {
@@ -426,12 +419,28 @@ apiRoutes.post('/get-history', async (req, res) => {
 		});
 		const sql = `
             WITH RankedItems AS (
-                SELECT BXA.SEQBAI, TO_CHAR(BXA.DATGER, 'HH24:MI:SS') AS HORA, BXA.DATGER, IBX.CODARM, IBX.SEQEND, IBX.ARMDES, IBX.ENDDES, IBX.CODPROD, IBX.SEQITE, PRO.DESCRPROD,
-                ROW_NUMBER() OVER(PARTITION BY BXA.SEQBAI ORDER BY IBX.SEQITE DESC) as rn
-                FROM AD_BXAEND BXA JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI LEFT JOIN TGFPRO PRO ON IBX.CODPROD = PRO.CODPROD
+                SELECT 
+                    BXA.SEQBAI, 
+                    TO_CHAR(BXA.DATGER, 'HH24:MI:SS') AS HORA, 
+                    BXA.DATGER, 
+                    IBX.CODARM, 
+                    IBX.SEQEND, 
+                    IBX.ARMDES, 
+                    IBX.ENDDES, 
+                    IBX.CODPROD, 
+                    IBX.SEQITE, 
+                    PRO.DESCRPROD,
+                    PRO.MARCA,
+                    -- ========================= CORREÇÃO AQUI =========================
+                    -- Alterado de IBX.CODVOL para PRO.CODVOL para corrigir o erro ORA-00904
+                    (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = IBX.CODPROD AND V.CODVOL = PRO.CODVOL) AS DERIVACAO,
+                    ROW_NUMBER() OVER(PARTITION BY BXA.SEQBAI ORDER BY IBX.SEQITE DESC) as rn
+                FROM AD_BXAEND BXA 
+                JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI 
+                LEFT JOIN TGFPRO PRO ON IBX.CODPROD = PRO.CODPROD
                 WHERE BXA.USUGER = ${codusu} AND TRUNC(BXA.DATGER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
             )
-            SELECT SEQBAI, HORA, CODARM, SEQEND, ARMDES, ENDDES, CODPROD, DESCRPROD FROM RankedItems WHERE rn = 1 ORDER BY DATGER DESC`;
+            SELECT SEQBAI, HORA, CODARM, SEQEND, ARMDES, ENDDES, CODPROD, DESCRPROD, MARCA, DERIVACAO FROM RankedItems WHERE rn = 1 ORDER BY DATGER DESC`;
 		const data = await callSankhyaService('DbExplorerSP.executeQuery', { sql });
 		if (data.status !== '1')
 			throw new Error(data.statusMessage || 'Falha ao carregar o histórico.');

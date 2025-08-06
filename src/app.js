@@ -1,4 +1,4 @@
-// src/app.js
+// src/app.js (MODIFICADO)
 import './style.css';
 import { PROXY_URL } from './config.js';
 
@@ -334,23 +334,36 @@ function renderizarCards(rows) {
     }
     emptyState.classList.add('hidden');
     rows.forEach(row => {
-        const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic, qtdCompleta] = row;
+        // ========================= ALTERAÇÃO AQUI =========================
+        // Recebendo a nova coluna 'derivacao' que veio do backend
+        const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic, qtdCompleta, derivacao] = row;
         const card = document.createElement('div');
         card.className = 'result-card';
         if (endpic === 'S') card.classList.add('picking-area');
+
+        // Montando a descrição completa: Descrição - Marca - Derivação
         let displayDesc = descrprod || 'Sem descrição';
         if (marca) displayDesc += ` - ${marca}`;
+        if (derivacao) displayDesc += ` - ${derivacao}`; // Adiciona a derivação
+
         card.innerHTML = `<div class="card-header"><p>Seq: <span>${sequencia}</span></p><p>Rua: <span>${rua}</span></p><p>Prédio: <span>${predio}</span></p></div><div class="card-body"><p class="product-desc">${displayDesc}</p></div><div class="card-footer"><span class="product-code">Cód: ${codprod}</span><span class="product-quantity">Qtd: <strong>${qtdCompleta}</strong></span><span class="product-validity">Val: ${formatarData(datval)}</span></div>`;
         card.addEventListener('click', () => fetchAndShowDetails(sequencia));
         resultsContainer.appendChild(card);
     });
 }
 function populateDetails(detailsArray) {
-    const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta] = detailsArray;
-    currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta };
+    // ========================= ALTERAÇÃO AQUI =========================
+    // Recebendo a nova coluna 'derivacao' para a tela de detalhes
+    const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta, derivacao] = detailsArray;
+    currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta, derivacao };
     const detailsContent = document.getElementById('details-content');
     const pickingClass = endpic === 'S' ? 'picking-area' : '';
-    detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${descrprod || 'Produto sem descrição'}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Marca</div><div class="value">${marca || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
+
+    // Montando a descrição principal completa para os detalhes
+    let mainDesc = descrprod || 'Produto sem descrição';
+    if (marca) mainDesc += ` - ${marca}`;
+
+    detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${mainDesc}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Derivação</div><div class="value">${derivacao || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
 }
 
 function renderHistoryCards(rows) {
@@ -363,10 +376,18 @@ function renderHistoryCards(rows) {
     }
     emptyState.classList.add('hidden');
     rows.forEach(row => {
-        const [seqbai, hora, codarm, seqend, armdes, enddes, codprod, descrprod] = row;
+        // ========================= ALTERAÇÃO AQUI =========================
+        // Recebendo as novas colunas 'marca' e 'derivacao'
+        const [seqbai, hora, codarm, seqend, armdes, enddes, codprod, descrprod, marca, derivacao] = row;
         const card = document.createElement('div');
         card.className = 'history-card';
-        let productHtml = descrprod ? `<div class="product-info">${descrprod}<span class="product-code">Cód: ${codprod}</span></div>` : '';
+
+        // Montando a descrição completa para o histórico
+        let productDisplay = descrprod || 'Produto';
+        if (marca) productDisplay += ` - ${marca}`;
+        if (derivacao) productDisplay += ` - ${derivacao}`;
+
+        let productHtml = descrprod ? `<div class="product-info">${productDisplay}<span class="product-code">Cód: ${codprod}</span></div>` : '';
         let movementHtml = '';
         if (armdes && enddes) {
             movementHtml = `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
