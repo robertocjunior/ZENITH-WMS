@@ -52,17 +52,15 @@ function sanitizeNumber(num) {
     return parsed;
 }
 
-// [NOVA FUNÇÃO UTILITÁRIA] Converte data do formato 'DDMMYYYY HH:mm:ss.s' para 'DD/MM/YYYY'
 function formatDbDateToApi(dbDate) {
     if (!dbDate || typeof dbDate !== 'string') return null;
     const datePart = dbDate.split(' ')[0];
-    if (datePart.length !== 8) return datePart; // Retorna como está se não for o formato esperado
+    if (datePart.length !== 8) return datePart;
     const day = datePart.substring(0, 2);
     const month = datePart.substring(2, 4);
     const year = datePart.substring(4, 8);
     return `${day}/${month}/${year}`;
 }
-
 
 async function getSystemBearerToken(forceRefresh = false) {
     if (systemBearerToken && !forceRefresh) return systemBearerToken;
@@ -461,28 +459,54 @@ apiRoutes.post('/get-history', async (req, res) => {
             month: '2-digit',
             day: '2-digit',
         });
+        
+        // [ALTERAÇÃO] Query modificada para unir o histórico de movimentação com o de correção
         const sql = `
-            WITH RankedItems AS (
-                SELECT 
-                    BXA.SEQBAI, 
-                    TO_CHAR(BXA.DATGER, 'HH24:MI:SS') AS HORA, 
-                    BXA.DATGER, 
-                    IBX.CODARM, 
-                    IBX.SEQEND, 
-                    IBX.ARMDES, 
-                    IBX.ENDDES, 
-                    IBX.CODPROD, 
-                    IBX.SEQITE, 
-                    PRO.DESCRPROD,
-                    PRO.MARCA,
-                    (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = IBX.CODPROD AND V.CODVOL = PRO.CODVOL) AS DERIVACAO,
-                    ROW_NUMBER() OVER(PARTITION BY BXA.SEQBAI ORDER BY IBX.SEQITE DESC) as rn
-                FROM AD_BXAEND BXA 
-                JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI 
-                LEFT JOIN TGFPRO PRO ON IBX.CODPROD = PRO.CODPROD
-                WHERE BXA.USUGER = ${codusu} AND TRUNC(BXA.DATGER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
-            )
-            SELECT SEQBAI, HORA, CODARM, SEQEND, ARMDES, ENDDES, CODPROD, DESCRPROD, MARCA, DERIVACAO FROM RankedItems WHERE rn = 1 ORDER BY DATGER DESC`;
+            -- Parte 1: Histórico de Movimentações (Baixa, Transferência, Picking)
+            SELECT 
+                'MOV' AS TIPO,
+                BXA.DATGER AS DATA_ORDEM,
+                TO_CHAR(BXA.DATGER, 'HH24:MI:SS') AS HORA, 
+                IBX.CODARM, 
+                IBX.SEQEND, 
+                IBX.ARMDES, 
+                IBX.ENDDES, 
+                IBX.CODPROD, 
+                PRO.DESCRPROD,
+                PRO.MARCA,
+                (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = IBX.CODPROD AND V.CODVOL = PRO.CODVOL) AS DERIVACAO,
+                NULL AS QUANT_ANT, -- Coluna placeholder
+                NULL AS QTD_ATUAL, -- Coluna placeholder
+                BXA.SEQBAI AS ID_OPERACAO
+            FROM AD_BXAEND BXA 
+            JOIN AD_IBXEND IBX ON IBX.SEQBAI = BXA.SEQBAI 
+            LEFT JOIN TGFPRO PRO ON IBX.CODPROD = PRO.CODPROD
+            WHERE BXA.USUGER = ${codusu} AND TRUNC(BXA.DATGER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
+
+            UNION ALL
+
+            -- Parte 2: Histórico de Correções
+            SELECT 
+                'CORRECAO' AS TIPO,
+                H.DHMOV AS DATA_ORDEM,
+                TO_CHAR(H.DHMOV, 'HH24:MI:SS') AS HORA,
+                H.CODARM,
+                H.SEQEND,
+                NULL AS ARMDES, -- Coluna placeholder
+                NULL AS ENDDES, -- Coluna placeholder
+                H.CODPROD,
+                (SELECT P.DESCRPROD FROM TGFPRO P WHERE P.CODPROD = H.CODPROD) AS DESCRPROD,
+                H.MARCA,
+                H.DERIV,
+                H.QUANT AS QUANT_ANT,
+                H.QATUAL AS QTD_ATUAL,
+                H.NUMUNICO AS ID_OPERACAO
+            FROM AD_HISTENDAPP H
+            WHERE H.CODUSU = ${codusu} AND TRUNC(H.DHMOV) = TO_DATE('${hoje}', 'DD/MM/YYYY')
+            
+            ORDER BY DATA_ORDEM DESC
+        `;
+
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         if (data.status !== '1')
             throw new Error(data.statusMessage || 'Falha ao carregar o histórico.');
@@ -522,14 +546,23 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
         if (type === 'correcao') {
             const { codarm, sequencia, newQuantity } = payload;
             
-            const itemSql = `SELECT CODPROD, CODVOL, DATENT, DATVAL FROM AD_CADEND WHERE CODARM = ${sanitizeNumber(codarm)} AND SEQEND = ${sanitizeNumber(sequencia)}`;
+            // [ALTERAÇÃO] Busca mais campos para salvar no histórico
+            const itemSql = `
+                SELECT 
+                    DEND.CODPROD, DEND.CODVOL, DEND.DATENT, DEND.DATVAL, DEND.QTDPRO,
+                    PRO.MARCA, 
+                    (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = DEND.CODPROD AND V.CODVOL = DEND.CODVOL) AS DERIVACAO 
+                FROM AD_CADEND DEND 
+                JOIN TGFPRO PRO ON DEND.CODPROD = PRO.CODPROD 
+                WHERE DEND.CODARM = ${sanitizeNumber(codarm)} AND DEND.SEQEND = ${sanitizeNumber(sequencia)}
+            `;
             const itemData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: itemSql });
 
             if (!itemData.responseBody || itemData.responseBody.rows.length === 0) {
                 throw new Error('Item não encontrado para correção.');
             }
 
-            const [codprod, codvol, datent, datval] = itemData.responseBody.rows[0];
+            const [codprod, codvol, datent, datval, qtdAnterior, marca, derivacao] = itemData.responseBody.rows[0];
             
             const scriptRequestBody = {
                 runScript: {
@@ -560,6 +593,27 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
             
             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
             
+            // [NOVO] Insere o registro de histórico após a correção bem-sucedida
+            const histRecord = {
+                entityName: 'AD_HISTENDAPP',
+                fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'],
+                records: [{
+                    values: {
+                        0: codarm,
+                        1: sequencia,
+                        2: codprod,
+                        3: codvol,
+                        4: marca,
+                        5: derivacao,
+                        6: qtdAnterior,
+                        7: newQuantity,
+                        8: codusu
+                    }
+                }]
+            };
+            await callSankhyaService('DatasetSP.save', histRecord);
+            logger.info(`Histórico de correção salvo para SEQEND ${sequencia}.`);
+
             logger.info(`Correção (actionID 97) executada com sucesso para SEQEND ${sequencia} pelo usuário ${username}.`);
             return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
         }

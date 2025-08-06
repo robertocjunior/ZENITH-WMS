@@ -11,6 +11,9 @@
     --history-background-color: #f0f8ff;
     --history-border-color: #d6e8fa;
     --history-header-color: #4a6a9b;
+    /* [NOVO] Cores para o card de correção */
+    --correction-background-color: #fff8e1;
+    --correction-border-color: #ffecb3;
 }
 
 * {
@@ -289,14 +292,10 @@ html, body {
 .detail-item .label { font-size: 14px; color: var(--text-light); margin-bottom: 5px; }
 .detail-item .value { font-size: 18px; font-weight: 500; }
 
-
-/* ================================== */
-/* ALTERAÇÃO PARA BOTÕES RESPONSIVOS  */
-/* ================================== */
 .action-buttons {
     display: flex;
-    flex-wrap: wrap; /* Permite que os botões quebrem para a próxima linha */
-    gap: 10px; /* Reduz o espaçamento para caber melhor */
+    flex-wrap: wrap;
+    gap: 10px;
     padding: 15px;
     background-color: var(--card-background);
     box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
@@ -305,9 +304,9 @@ html, body {
     z-index: 10;
 }
 .btn-action {
-    flex-grow: 1; /* Permite que os botões cresçam para preencher o espaço */
-    flex-basis: calc(50% - 5px); /* Define uma largura base para 2 botões por linha, ajustando pelo gap */
-    min-width: 120px; /* Evita que os botões fiquem muito pequenos */
+    flex-grow: 1;
+    flex-basis: calc(50% - 5px);
+    min-width: 120px;
     padding: 18px;
     font-size: 16px;
     border: none;
@@ -318,9 +317,6 @@ html, body {
     align-items: center;
     justify-content: center;
 }
-/* ================================== */
-/* FIM DA ALTERAÇÃO                   */
-/* ================================== */
 
 .btn-baixar { background-color: #28a745; }
 .btn-transferir { background-color: #007bff; }
@@ -584,6 +580,18 @@ html, body {
 .history-movement .arrow {
     color: var(--primary-color);
     flex-shrink: 0;
+}
+
+/* [NOVO] Estilos para o card de histórico de correção */
+.history-card.correction-type {
+    background-color: var(--correction-background-color);
+    border-color: var(--correction-border-color);
+}
+.history-card.correction-type .card-header p:first-child {
+    color: #c09b00;
+}
+.history-card.correction-type .history-movement .arrow {
+    color: #c09b00;
 }
 
 @media (max-width: 768px) {

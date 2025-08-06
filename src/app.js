@@ -375,6 +375,7 @@ function populateDetails(detailsArray) {
     detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${mainDesc}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Derivação</div><div class="value">${derivacao || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
 }
 
+// [ALTERAÇÃO] Função de renderização de histórico atualizada
 function renderHistoryCards(rows) {
     const container = document.getElementById('history-container');
     const emptyState = document.getElementById('history-empty-state');
@@ -385,22 +386,43 @@ function renderHistoryCards(rows) {
     }
     emptyState.classList.add('hidden');
     rows.forEach(row => {
-        const [seqbai, hora, codarm, seqend, armdes, enddes, codprod, descrprod, marca, derivacao] = row;
+        const [tipo, dataOrdem, hora, codarm, seqend, armdes, enddes, codprod, descrprod, marca, derivacao, quantAnt, qtdAtual, idOperacao] = row;
+        
         const card = document.createElement('div');
         card.className = 'history-card';
 
         let productDisplay = descrprod || 'Produto';
         if (marca) productDisplay += ` - ${marca}`;
         if (derivacao) productDisplay += ` - ${derivacao}`;
-
         let productHtml = descrprod ? `<div class="product-info">${productDisplay}<span class="product-code">Cód: ${codprod}</span></div>` : '';
+        
         let movementHtml = '';
-        if (armdes && enddes) {
-            movementHtml = `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
-        } else {
-            movementHtml = `<div class="history-location"><div class="location"><div class="label">Local da Baixa</div><div>${codarm} &rarr; ${seqend}</div></div></div>`;
+
+        if (tipo === 'CORRECAO') {
+            card.classList.add('correction-type'); // Adiciona classe para estilização
+            movementHtml = `
+                <div class="history-location">
+                    <div class="location">
+                        <div class="label">Local da Correção</div>
+                        <div>${codarm} &rarr; ${seqend}</div>
+                    </div>
+                </div>
+                <div class="history-movement">
+                    <div class="origin"><div class="label">Qtd. Anterior</div><div>${quantAnt}</div></div>
+                    <span class="material-icons arrow">trending_flat</span>
+                    <div class="destination"><div class="label">Qtd. Corrigida</div><div>${qtdAtual}</div></div>
+                </div>
+            `;
+        } else { // tipo 'MOV'
+            if (armdes && enddes) {
+                movementHtml = `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
+            } else {
+                movementHtml = `<div class="history-location"><div class="location"><div class="label">Local da Baixa</div><div>${codarm} &rarr; ${seqend}</div></div></div>`;
+            }
         }
-        card.innerHTML = `<div class="card-header"><p>Operação: <span>${seqbai}</span></p><p>${hora}</p></div><div class="card-body">${productHtml}${movementHtml}</div>`;
+
+        const opTypeLabel = tipo === 'CORRECAO' ? 'Correção' : 'Operação';
+        card.innerHTML = `<div class="card-header"><p>${opTypeLabel}: <span>${idOperacao}</span></p><p>${hora}</p></div><div class="card-body">${productHtml}${movementHtml}</div>`;
         container.appendChild(card);
     });
 }
@@ -478,7 +500,6 @@ function openCorrecaoModal() {
     if (!currentItemDetails) return;
     document.getElementById('modal-qtd-disponivel-correcao').textContent = currentItemDetails.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-correcao');
-    // [ALTERAÇÃO] Limpa o campo para o usuário preencher manualmente
     qtdInput.value = ''; 
     document.getElementById('correcao-modal').classList.remove('hidden');
 }
