@@ -1,4 +1,4 @@
-// server.js (CORRIGIDO)
+// server.js (CORRIGIDO CONFORME SOLICITAÇÃO)
 require('dotenv').config();
 
 const express = require('express');
@@ -139,9 +139,7 @@ const authenticateToken = (req, res, next) => {
 };
 
 
-// ========================================================================
-// ROTA DE LOGIN MODIFICADA PARA INCLUIR NUMREG
-// ========================================================================
+// Rota de Login (Lógica inalterada)
 app.post('/login', loginLimiter, async (req, res) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
     logger.http(`Tentativa de login para o usuário: ${username}`);
@@ -254,6 +252,9 @@ apiRoutes.post('/get-warehouses', async (req, res) => {
     logger.http(`Usuário ${username} (NUMREG: ${numreg}) solicitou a lista de armazéns.`);
 
 	try {
+        // ALTERAÇÃO: Força a re-autenticação do sistema para usar permissões máximas
+        await getSystemBearerToken(true);
+
         if (!numreg) {
             throw new Error("NUMREG do usuário não encontrado na sessão.");
         }
@@ -277,6 +278,9 @@ apiRoutes.post('/get-permissions', async (req, res) => {
     const { username, codusu } = req.userSession;
     logger.http(`Verificando permissões para o usuário ${username} (CODUSU: ${codusu}).`);
     try {
+        // ALTERAÇÃO: Força a re-autenticação do sistema para usar permissões máximas
+        await getSystemBearerToken(true);
+
         const sql = `SELECT BAIXA, TRANSF, PICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
         const data = await callSankhyaService('DbExplorerSP.executeQuery', { sql });
 
@@ -308,6 +312,9 @@ apiRoutes.post('/get-permissions', async (req, res) => {
 
 apiRoutes.post('/search-items', async (req, res) => {
 	try {
+        // ALTERAÇÃO: Força a re-autenticação do sistema para usar permissões máximas
+        await getSystemBearerToken(true);
+
 		const codArm = sanitizeNumber(req.body.codArm);
 		const filtro = req.body.filtro;
 
@@ -364,6 +371,9 @@ apiRoutes.post('/search-items', async (req, res) => {
 
 apiRoutes.post('/get-item-details', async (req, res) => {
 	try {
+        // ALTERAÇÃO: Força a re-autenticação do sistema para usar permissões máximas
+        await getSystemBearerToken(true);
+
 		const codArm = sanitizeNumber(req.body.codArm);
 		const sequencia = sanitizeNumber(req.body.sequencia);
 		logger.http(
@@ -388,6 +398,9 @@ apiRoutes.post('/get-item-details', async (req, res) => {
 
 apiRoutes.post('/get-picking-locations', async (req, res) => {
 	try {
+        // ALTERAÇÃO: Força a re-autenticação do sistema para usar permissões máximas
+        await getSystemBearerToken(true);
+
 		const codarm = sanitizeNumber(req.body.codarm);
 		const codprod = sanitizeNumber(req.body.codprod);
 		const sequencia = sanitizeNumber(req.body.sequencia);
@@ -412,6 +425,9 @@ apiRoutes.post('/get-history', async (req, res) => {
 	const { username, codusu } = req.userSession;
 	logger.http(`Usuário ${username} solicitou seu histórico de hoje.`);
 	try {
+        // ALTERAÇÃO: Força a re-autenticação do sistema para usar permissões máximas
+        await getSystemBearerToken(true);
+
 		const hoje = new Date().toLocaleDateString('pt-BR', {
 			year: 'numeric',
 			month: '2-digit',
@@ -431,8 +447,6 @@ apiRoutes.post('/get-history', async (req, res) => {
                     IBX.SEQITE, 
                     PRO.DESCRPROD,
                     PRO.MARCA,
-                    -- ========================= CORREÇÃO AQUI =========================
-                    -- Alterado de IBX.CODVOL para PRO.CODVOL para corrigir o erro ORA-00904
                     (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = IBX.CODPROD AND V.CODVOL = PRO.CODVOL) AS DERIVACAO,
                     ROW_NUMBER() OVER(PARTITION BY BXA.SEQBAI ORDER BY IBX.SEQITE DESC) as rn
                 FROM AD_BXAEND BXA 
@@ -454,6 +468,7 @@ apiRoutes.post('/get-history', async (req, res) => {
 	}
 });
 
+// Rota de Transação (Lógica inalterada para manter segurança de escrita)
 apiRoutes.post('/execute-transaction', async (req, res) => {
 	const { type, payload } = req.body;
 	const { username, codusu } = req.userSession;
