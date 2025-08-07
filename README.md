@@ -4,7 +4,7 @@
 
 ZENITH-WMS é uma aplicação web moderna e responsiva (Progressive Web App - PWA) projetada para o gerenciamento de estoque em armazéns, com integração profunda ao sistema ERP Sankhya. Ele fornece uma interface mobile-first para que os operadores realizem tarefas comuns de armazenamento diretamente de qualquer dispositivo com um navegador web.
 
-## ✨ Funcionalidades
+##  <h2 align="center">✨ Funcionalidades</h2>
 
 *   **Autenticação Segura**: Login de usuário com credenciais do Sankhya, com proteção contra força bruta e autorização de dispositivos.
 *   **Operações de Armazém**:
@@ -17,7 +17,7 @@ ZENITH-WMS é uma aplicação web moderna e responsiva (Progressive Web App - PW
 *   **PWA Responsivo**: Funciona em qualquer dispositivo (desktop, tablet, celular) e pode ser "instalado" na tela inicial para uma experiência semelhante a um aplicativo nativo.
 *   **Permissões Baseadas em Funções**: O acesso às funcionalidades (baixa, transferência, etc.) é controlado por permissões de usuário configuradas no Sankhya.
 
-## 🏗️ Arquitetura
+## <h2 align="center">🏗️ Arquitetura</h2>
 
 O projeto segue uma arquitetura cliente-servidor:
 
