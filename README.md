@@ -45,7 +45,8 @@ Antes de implantar a aplicação, algumas configurações são necessárias dent
 1.  **Dicionário de Dados (Construtor de Telas):**
     *   Navegue até o "Construtor de Telas" no Sankhya.
     *   Acesse o dicionário da tabela `AD_IBXEND`.
-    *   **Importe o campo `CODPROD` da tabela `TGFPRO`**. Isso garante que a relação entre a tabela de itens da transação (`AD_IBXEND`) e a tabela de produtos (`TGFPRO`) seja corretamente estabelecida nos metadados do Sankhya. Este passo é crucial para que os gatilhos e procedimentos do sistema funcionem corretamente.
+    *   **Importe o campo `CODPROD` da tabela `TGFPRO` e defina-o como 'Somente Leitura'**. Isso garante que a relação entre a tabela de itens da transação (`AD_IBXEND`) e a tabela de produtos (`TGFPRO`) seja corretamente estabelecida e impede alterações manuais que possam comprometer a integridade dos dados.
+    *   **Crie o campo `APP` na tabela `AD_IBXEND`**. Configure este campo como do tipo **'Caixa de Seleção' (Checkbox)** e marque-o como **'Somente Leitura'**. O tipo de dado no banco pode ser `VARCHAR2(1)`. Ele será usado para registrar que a transação foi realizada através do ZENITH-WMS, facilitando a auditoria e o rastreamento das operações.
 
 2.  **Importação de Metadados de Tela (Construtor de Telas):**
     *   O projeto requer telas e configurações personalizadas no Sankhya. Você deve **importar os arquivos de metadados** localizados na pasta **`Telas Sankhya`** (esta pasta deve ser fornecida junto com o código-fonte do projeto) para o "Construtor de Telas".
