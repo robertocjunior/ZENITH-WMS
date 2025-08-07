@@ -1,76 +1,76 @@
 # <h1 align="center">ZENITH-WMS</h1>
 
-<p align="center">
-  <img alt="Zenith WMS Logo" src="./docs/zenith.svg" width="150">
-</p>
+<img alt="gpt-oss-120" src="./docs/zenith.svg">
 
-<p align="center">
-  <strong>ZENITH-WMS</strong> é uma aplicação web moderna e responsiva (PWA) para gerenciamento de estoque em armazéns, com integração profunda ao ERP Sankhya. Ele fornece uma interface mobile-first para que os operadores realizem tarefas comuns de armazenamento diretamente de qualquer dispositivo com um navegador.
-</p>
+ZENITH-WMS é uma aplicação web moderna e responsiva (Progressive Web App - PWA) projetada para o gerenciamento de estoque em armazéns, com integração profunda ao sistema ERP Sankhya. Ele fornece uma interface mobile-first para que os operadores realizem tarefas comuns de armazenamento diretamente de qualquer dispositivo com um navegador web.
 
----
+##  <h2 align="center">✨ Funcionalidades</h2>
 
-## <h2 align="center">✨ Funcionalidades</h2>
-
-* **Autenticação Segura**: Login com credenciais do Sankhya, autorização por dispositivo e proteção contra ataques de força bruta.
-* **Operações de Armazém em Tempo Real**:
-    * **Consulta de Estoque**: Pesquise por endereço, código de produto ou descrição.
-    * **Baixa de Estoque**: Consuma produtos de um endereço.
-    * **Transferência de Estoque**: Mova produtos entre endereços distintos.
-    * **Picking**: Transfira produtos de uma área de armazenamento para uma área de picking designada.
-    * **Correção de Quantidade**: Ajuste o saldo de estoque em um endereço específico.
-* **Histórico de Operações**: Visualize um registro de todas as operações realizadas pelo usuário no dia.
-* **Progressive Web App (PWA)**: Instale na tela inicial do dispositivo para uma experiência de aplicativo nativo.
-* **Controle de Permissões**: O acesso a cada funcionalidade (baixa, transferência, etc.) é controlado por usuário no Sankhya.
+*   **Autenticação Segura**: Login de usuário com credenciais do Sankhya, com proteção contra força bruta e autorização de dispositivos.
+*   **Operações de Armazém**:
+    *   **Consulta de Estoque**: Pesquise e visualize o estoque por endereço, código de produto ou descrição.
+    *   **Baixa de Estoque**: Consuma ou dê baixa em produtos de um endereço específico.
+    *   **Transferência de Estoque**: Mova produtos entre diferentes endereços, incluindo para áreas de picking designadas.
+    *   **Correção de Quantidade**: Ajuste a quantidade de estoque em um endereço.
+*   **Dados em Tempo Real**: Todas as operações são realizadas em tempo real no banco de dados do Sankhya.
+*   **Histórico de Operações**: Visualize um registro de todas as operações realizadas pelo usuário durante o dia atual.
+*   **PWA Responsivo**: Funciona em qualquer dispositivo (desktop, tablet, celular) e pode ser "instalado" na tela inicial para uma experiência semelhante a um aplicativo nativo.
+*   **Permissões Baseadas em Funções**: O acesso às funcionalidades (baixa, transferência, etc.) é controlado por permissões de usuário configuradas no Sankhya.
 
 ## <h2 align="center">🏗️ Arquitetura</h2>
 
-* **Frontend**: Uma Single-Page Application (SPA) construída com **HTML, CSS e JavaScript puros**, utilizando **Vite** para um processo de build otimizado e ofuscado.
-* **Backend**: Um servidor **Node.js** com **Express**, que atua como um proxy seguro entre o cliente e a API do Sankhya. Ele gerencia a lógica de negócios, autenticação, logging com Winston, e segurança com Helmet e rate limiting.
-* **Banco de Dados**: Interage em tempo real com o banco de dados do ERP Sankhya (Oracle) através de tabelas, procedures e triggers personalizadas para garantir a integridade e auditoria dos dados.
+O projeto segue uma arquitetura cliente-servidor:
+
+*   **Frontend**: Uma Single-Page Application (SPA) construída com HTML, CSS e JavaScript puros. Utiliza **Vite** para um processo de desenvolvimento e build eficiente.
+*   **Backend**: Um servidor **Node.js** usando o framework **Express**. Ele atua como um proxy seguro entre a aplicação cliente e a API do Sankhya, tratando da lógica de negócios, autenticação e medidas de segurança como limitação de taxa (rate limiting) e Content Security Policy (CSP).
+*   **Banco de Dados**: Interage diretamente com o banco de dados do ERP Sankhya (Oracle) através de tabelas e triggers personalizadas para garantir a integridade dos dados e a auditoria.
 
 ---
 
-## <h2 align="center">🚀 Guia de Implantação e Configuração</h2>
+## <h2 align="center">🚀 Guia de Preparação do Ambiente</h2>
 
-Siga estes passos para configurar e implantar a aplicação ZENITH-WMS em um ambiente de produção.
+Siga estes passos para configurar e implantar a aplicação ZENITH-WMS.
 
 ### Pré-requisitos
 
-* **Node.js** (v18.0.0 ou superior)
-* **npm** (ou um gerenciador de pacotes compatível)
-* **PM2** instalado globalmente (`npm install -g pm2`)
-* Acesso de **administrador** ao sistema Sankhya.
-* Acesso ao **banco de dados** do Sankhya (via DBeaver, SQL Developer, etc.).
+*   Node.js (v18.0.0 ou superior)
+*   npm (ou yarn)
+*   Acesso ao sistema Sankhya com privilégios administrativos.
+*   Acesso ao banco de dados do Sankhya (ex: usando um cliente como DBeaver ou SQL Developer).
 
 ### Passo 1: Configuração no Sankhya
 
-1.  **Dicionário de Dados:**
-    * No "Construtor de Telas", acesse o dicionário da tabela `AD_IBXEND`.
-    * **Importe o campo `CODPROD` da tabela `TGFPRO`**. Este passo é crucial para que os gatilhos e procedures do sistema funcionem corretamente.
+Antes de implantar a aplicação, algumas configurações são necessárias dentro do ERP Sankhya.
 
-2.  **Metadados de Tela:**
-    * Importe os arquivos de metadados (`.xml`) localizados na pasta `Telas Sankhya` (fornecida com o projeto) para o "Construtor de Telas".
+1.  **Dicionário de Dados (Construtor de Telas):**
+    *   Navegue até o "Construtor de Telas" no Sankhya.
+    *   Acesse o dicionário da tabela `AD_IBXEND`.
+    *   **Importe o campo `CODPROD` da tabela `TGFPRO`**. Isso garante que a relação entre a tabela de itens da transação (`AD_IBXEND`) e a tabela de produtos (`TGFPRO`) seja corretamente estabelecida nos metadados do Sankhya. Este passo é crucial para que os gatilhos e procedimentos do sistema funcionem corretamente.
+
+2.  **Importação de Metadados de Tela (Construtor de Telas):**
+    *   O projeto requer telas e configurações personalizadas no Sankhya. Você deve **importar os arquivos de metadados** localizados na pasta **`Telas Sankhya`** (esta pasta deve ser fornecida junto com o código-fonte do projeto) para o "Construtor de Telas".
 
 ### Passo 2: Configuração do Banco de Dados
 
-Execute os seguintes scripts (localizados na pasta `sql/`) no banco de dados do Sankhya. Eles são essenciais para a lógica da aplicação e a integridade dos dados.
+Os seguintes gatilhos (triggers) devem ser criados no banco de dados do Sankhya. Eles são essenciais para a lógica da aplicação e a integridade dos dados. Execute os scripts encontrados no diretório `sql/` deste projeto.
 
-* `TRG_AD_IBXEND_SET_CODPROD.SQL`: Preenche o `CODPROD` na tabela de itens da transação.
-* `TRG_BLOCK_DELETE_AD_HISTENDAPP.SQL`: Impede a exclusão de registros do histórico para auditoria.
-* `TRG_IMPEDE_DUPLICADO_CODARM.SQL`: Garante que um armazém seja único na tabela de permissões.
-* `TRG_IMPEDE_DUPLICADO_CODUSU.SQL`: Garante que um usuário seja único na tabela de permissões.
+*   `TRG_AD_IBXEND_SET_CODPROD.SQL`: Preenche automaticamente o campo `CODPROD` na tabela `AD_IBXEND` quando um novo registro de transação é criado, com base no armazém e na sequência do endereço.
+*   `TRG_BLOCK_DELETE_AD_HISTENDAPP.SQL`: Impede a exclusão de registros da tabela de histórico de operações (`AD_HISTENDAPP`) para manter uma trilha de auditoria completa.
+*   `TRG_IMPEDE_DUPLICADO_CODARM.SQL`: Garante que um armazém só possa ser atribuído uma vez na tabela de permissões (`AD_PERMEND`).
+*   `TRG_IMPEDE_DUPLICADO_CODUSU.SQL`: Garante que um usuário só possa ter um conjunto de permissões na tabela de permissões do aplicativo (`AD_APPPERM`).
 
-### Passo 3: Credenciais da API no Sankhya
+### Passo 3: Usuário da API e Registro da Aplicação
 
-1.  **Criar Usuário da API:** Crie um usuário dedicado no Sankhya que será usado pelo backend para se conectar à API.
-2.  **Registrar Aplicação:** Na tela "Cadastro de Aplicativo", registre a aplicação para obter uma **Chave de Aplicativo (`appkey`)** e um **Token (`token`)**.
+O servidor backend precisa de suas próprias credenciais para se comunicar com a API do Sankhya.
 
-### Passo 4: Configuração do Servidor
+1.  **Criar Usuário da API:** Crie um usuário dedicado dentro do Sankhya para a API. Este usuário precisa de permissões para fazer login via API e executar os serviços usados no `server.js` (ex: `DbExplorerSP.executeQuery`, `ActionButtonsSP.executeScript`, etc.).
+2.  **Registrar Aplicação:** Registre uma nova aplicação na tela "Cadastro de Aplicativo" do Sankhya para obter uma **Chave de Aplicativo** (`appkey`) e um **Token** (`token`).
+
+### Passo 4: Configuração do Servidor da Aplicação
 
 1.  **Clone o Repositório:**
     ```bash
-    git clone [https://github.com/robertocjunior/ZENITH-WMS.git](https://github.com/robertocjunior/ZENITH-WMS.git)
+    git clone https://github.com/robertocjunior/ZENITH-WMS.git
     cd ZENITH-WMS
     ```
 
@@ -79,76 +79,56 @@ Execute os seguintes scripts (localizados na pasta `sql/`) no banco de dados do 
     npm install
     ```
 
-3.  **Crie o Arquivo de Variáveis de Ambiente:**
-    Copie o arquivo de exemplo `.env.example` para criar seu arquivo de configuração.
+3.  **Crie o Arquivo de Configuração:**
+    Crie um arquivo `.env` na raiz do projeto. Você pode copiar o arquivo `.env.example`:
     ```bash
     cp .env.example .env
     ```
 
-4.  **Configure o arquivo `.env`:**
-    Abra o arquivo `.env` e preencha com as credenciais obtidas nos passos anteriores.
+4.  **Configure as Variáveis de Ambiente:**
+    Abra o arquivo `.env` e preencha os valores obtidos nos passos anteriores.
 
-    ```env
-    # URL da API Sankhya (Ex: [https://sankhya.suaempresa.com/mge](https://sankhya.suaempresa.com/mge))
-    SANKHYA_API_URL=
-
-    # Credenciais da Aplicação (obtidas no Passo 3)
-    SANKHYA_APPKEY=
-    SANKHYA_TOKEN=
-
-    # Credenciais do Usuário de API (obtidas no Passo 3)
-    SANKHYA_USERNAME=
-    SANKHYA_PASSWORD=
-
-    # Chave secreta para assinar os tokens de sessão (JWT)
-    # Gere uma chave segura e aleatória.
-    JWT_SECRET=
-
-    # Porta e Ambiente do Servidor
-    PORT=3000
-    NODE_ENV=production
-    ```
+    *   `SANKHYA_API_URL`: A URL base da sua API Sankhya (ex: `https://sankhya.minhaempresa.com/mge`).
+    *   `SANKHYA_APPKEY`: A Chave de Aplicativo obtida do Sankhya.
+    *   `SANKHYA_USERNAME`: O nome de usuário do usuário dedicado da API.
+    *   `SANKHYA_PASSWORD`: A senha do usuário dedicado da API.
+    *   `SANKHYA_TOKEN`: O Token obtido do Sankhya.
+    *   `JWT_SECRET`: Uma string longa, aleatória e secreta para assinar os tokens de sessão. Você pode gerar uma usando o script Python incluído:
+        ```bash
+        python generatekeys.py
+        # Escolha a opção 1 e copie a chave gerada
+        ```
+    *   `PORT`: A porta na qual o servidor será executado (o padrão é `3000`).
+    *   `NODE_ENV`: Defina como `production` para implantação, ou `development` para testes locais.
 
 ### Passo 5: Executando a Aplicação
 
-#### Para Desenvolvimento
-
-Use este comando para iniciar o servidor em modo de desenvolvimento. A aplicação estará disponível em `http://localhost:3000`.
-
+**Para Desenvolvimento:**
+Para executar o servidor em modo de desenvolvimento:
 ```bash
 npm start
 ```
+O servidor será iniciado e você poderá acessar a aplicação em `http://localhost:3000`.
 
-#### Para Produção com PM2
+**Para Produção:**
+O projeto está configurado para ser implantado usando o **PM2**, um gerenciador de processos para Node.js.
 
-Os scripts a seguir foram configurados no `package.json` para facilitar o gerenciamento do ciclo de vida da aplicação em produção.
-
-1.  **Redeploy (Reimplantação Completa):**
-    Este é o comando recomendado para a implantação inicial ou para atualizar a aplicação. Ele para a versão antiga, deleta o processo, constrói a nova versão e a inicia em modo cluster.
+1.  **Compile o Frontend:**
+    Este comando compila e minifica os arquivos do frontend na pasta `dist/`.
     ```bash
-    npm run prod:redeploy
+    npm run build
     ```
 
-2.  **Comandos de Gerenciamento:**
-    Use os seguintes scripts para gerenciar o serviço sem fazer um redeploy completo.
+2.  **Implante com PM2:**
+    O script `redeploy` cuida de tudo: ele limpa os logs antigos, deleta o processo anterior, compila o projeto novamente e inicia um novo processo em modo de produção usando o arquivo `ecosystem.config.js`.
+    ```bash
+    npm run redeploy
+    ```
 
-    * **Iniciar Serviço (se estiver parado):**
-        ```bash
-        npm run prod:start
-        ```
-    * **Parar Serviço:**
-        ```bash
-        npm run prod:stop
-        ```
-    * **Reiniciar Serviço (útil após alterar o `.env`):**
-        ```bash
-        npm run prod:restart
-        ```
-    * **Visualizar Logs em Tempo Real:**
-        ```bash
-        npm run prod:logs
-        ```
-    * **Remover Serviço da Lista do PM2:**
-        ```bash
-        npm run prod:delete
-        
+    Você pode gerenciar o processo usando comandos padrão do PM2:
+    ```bash
+    pm2 list
+    pm2 stop wms-zenith
+    pm2 restart wms-zenith
+    pm2 logs wms-zenith
+    ```
