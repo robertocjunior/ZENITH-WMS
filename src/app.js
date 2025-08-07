@@ -88,6 +88,30 @@ async function handleLogin() {
     }
 }
 
+// [NOVA FUNÇÃO] Limpa todos os elementos visuais da interface
+function resetUIState() {
+    // Limpa a tela principal
+    document.getElementById('armazem-select').innerHTML = '<option value="">Selecione um Armazém</option>';
+    document.getElementById('filtro-sequencia').value = '';
+    document.getElementById('results-container').innerHTML = '';
+    const emptyState = document.getElementById('empty-state');
+    emptyState.classList.remove('hidden');
+    emptyState.querySelector('p').textContent = "Nenhum resultado para exibir";
+    emptyState.querySelector('span').textContent = "Selecione um armazém para começar";
+
+    // Limpa a tela de detalhes
+    document.getElementById('details-content').innerHTML = '';
+    currentItemDetails = null;
+
+    // Limpa a tela de histórico
+    document.getElementById('history-container').innerHTML = '';
+    document.getElementById('history-empty-state').classList.add('hidden');
+
+    // Limpa os campos de login
+    document.getElementById('login-username').value = '';
+    document.getElementById('login-password').value = '';
+}
+
 async function handleLogout(fromInactivity = false) {
     closeProfilePanel();
     const token = Session.getToken();
@@ -104,6 +128,10 @@ async function handleLogout(fromInactivity = false) {
     Session.clearNumReg();
     InactivityTimer.clear();
     removeActivityListeners();
+    
+    // [ALTERAÇÃO] Chama a nova função para limpar a UI
+    resetUIState();
+
     switchView('login');
     if (fromInactivity) {
         openConfirmModal("Sua sessão expirou por inatividade.", "Sessão Expirada");
