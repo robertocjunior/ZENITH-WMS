@@ -36,12 +36,25 @@ async function authenticatedFetch(endpoint, body = {}) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(body)
     });
-    const data = await response.json();
+    
+    // [CORREÇÃO] Lida melhor com o erro de validação para exibir uma mensagem clara
     if (!response.ok) {
         if (response.status === 401 || response.status === 403) handleLogout(true);
-        throw new Error(data.message || "Erro na comunicação com o servidor.");
+        const errorData = await response.json();
+        // Se houver uma lista de erros do Zod, formata para exibição
+        if (errorData.errors) {
+            const errorMessages = errorData.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('\n');
+            throw new Error(`Dados inválidos:\n${errorMessages}`);
+        }
+        throw new Error(errorData.message || "Erro na comunicação com o servidor.");
     }
-    return data;
+    
+    // Se a resposta for OK mas vazia (código 204, por exemplo), retorna nulo.
+    if (response.status === 204) {
+        return null;
+    }
+
+    return response.json();
 }
 
 async function handleLogin() {
@@ -187,7 +200,7 @@ async function fetchAndShowDetails(sequencia) {
         const codArm = document.getElementById('armazem-select').value;
         
         const [details, permissions] = await Promise.all([
-            authenticatedFetch('/get-item-details', { codArm, sequencia }),
+            authenticatedFetch('/get-item-details', { codArm, sequencia: String(sequencia) }),
             authenticatedFetch('/get-permissions')
         ]);
         
@@ -339,8 +352,13 @@ async function openPickingModal() {
     
     showLoading(true);
     try {
+        // [CORREÇÃO] Garante que os dados numéricos sejam enviados como números
         const { codarm, codprod, sequencia } = currentItemDetails;
-        const locations = await authenticatedFetch('/get-picking-locations', { codarm, codprod, sequencia });
+        const locations = await authenticatedFetch('/get-picking-locations', { 
+            codarm: Number(codarm), 
+            codprod: Number(codprod), 
+            sequencia: Number(sequencia)
+        });
         
         selectPicking.innerHTML = locations.length ? '<option value="">Selecione um destino</option>' : '<option value="">Nenhum local de picking encontrado</option>';
         locations.forEach(([seqEnd, descrProd]) => {
@@ -496,7 +514,7 @@ function switchView(viewName) {
     }
 }
 
-function openConfirmModal(message, title = 'Aviso') { document.getElementById('modal-confirm-title').textContent = title; document.getElementById('modal-confirm-message').innerHTML = `<p>${message}</p>`; document.getElementById('confirm-modal').classList.remove('hidden'); }
+function openConfirmModal(message, title = 'Aviso') { document.getElementById('modal-confirm-title').textContent = title; document.getElementById('modal-confirm-message').innerHTML = `<p>${message.replace(/\n/g, '<br>')}</p>`; document.getElementById('confirm-modal').classList.remove('hidden'); }
 function closeConfirmModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
 function openBaixaModal() {
     if (!currentItemDetails) return;
