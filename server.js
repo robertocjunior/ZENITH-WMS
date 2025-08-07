@@ -8,16 +8,25 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const helmet = require('helmet');
-// O 'rate-limit' foi removido, pois não será mais usado
 const logger = require('./logger');
 
 const app = express();
-app.use(helmet());
+
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "font-src": ["'self'", "fonts.gstatic.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
+      },
+    },
+  })
+);
+
 app.use(express.json());
 app.use(cors());
 app.set('trust proxy', 1);
-
-// [REMOVIDO] Bloco do loginLimiter por IP foi removido
 
 const apiLimiter = require('express-rate-limit')({
     windowMs: 15 * 60 * 1000,
@@ -27,10 +36,9 @@ const apiLimiter = require('express-rate-limit')({
     legacyHeaders: false,
 });
 
-// [NOVO] Sistema de controle de tentativas de login por dispositivo
 const loginAttempts = {};
 const MAX_ATTEMPTS = 10;
-const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutos
+const LOCKOUT_TIME = 15 * 60 * 1000;
 
 const SANKHYA_API_URL = process.env.SANKHYA_API_URL;
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -114,9 +122,12 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
             { headers: { Authorization: `Bearer ${freshSystemToken}` } }
         );
         
+        // [CORREÇÃO] A linha de logout foi REINSERIDA, conforme o seu código de exemplo.
+        // Isso é crucial para que a sessão temporária seja destruída e não interfira com a sessão principal do usuário.
         await axios.post(`${SANKHYA_API_URL}/logout`, {}, {
             headers: { Authorization: `Bearer ${freshSystemToken}` }
         });
+
         return serviceResponse.data;
     } catch (error) {
         const errorMessage = error.response?.data?.statusMessage || `Falha ao executar ${serviceName} como sistema.`;
@@ -187,10 +198,8 @@ const authenticateToken = (req, res, next) => {
 app.post('/login', async (req, res) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
     
-    // [NOVO] Usa o deviceToken (ou o IP como fallback) para identificar o dispositivo
     const deviceIdentifier = clientDeviceToken || req.ip;
 
-    // [NOVO] Verifica se o dispositivo está bloqueado
     if (loginAttempts[deviceIdentifier] && loginAttempts[deviceIdentifier].lockedUntil > Date.now()) {
         const remainingTime = Math.ceil((loginAttempts[deviceIdentifier].lockedUntil - Date.now()) / 60000);
         logger.warn(`Tentativa de login bloqueada para o dispositivo ${deviceIdentifier}. Tempo restante: ${remainingTime} min.`);
@@ -241,7 +250,7 @@ app.post('/login', async (req, res) => {
         }
 
         if (!deviceIsAuthorized && clientDeviceToken) {
-            return res.status(403).json({
+             return res.status(403).json({
                 message: 'Dispositivo novo detectado e registrado. Solicite a um administrador para ativá-lo.',
                 deviceToken: clientDeviceToken,
             });
@@ -270,7 +279,6 @@ app.post('/login', async (req, res) => {
             throw new Error(loginResponse.statusMessage || 'Credenciais de operador inválidas.');
         }
         
-        // [NOVO] Se o login for bem-sucedido, reseta as tentativas para este dispositivo
         delete loginAttempts[deviceIdentifier];
 
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
@@ -288,7 +296,6 @@ app.post('/login', async (req, res) => {
         });
 
     } catch (error) {
-        // [NOVO] Lógica para contar tentativas de login falhas
         if (!loginAttempts[deviceIdentifier]) {
             loginAttempts[deviceIdentifier] = { count: 0, lockedUntil: null };
         }
