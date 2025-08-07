@@ -27,7 +27,7 @@ O projeto segue uma arquitetura cliente-servidor:
 
 ---
 
-## 🚀 Guia de Preparação do Ambiente
+## <h2 align="center">🚀 Guia de Preparação do Ambiente</h2>
 
 Siga estes passos para configurar e implantar a aplicação ZENITH-WMS.
 
