@@ -7,7 +7,12 @@
   "scripts": {
     "start": "node server.js",
     "build": "vite build",
-    "redeploy": "pm2 flush && pm2 delete wms-zenith && npm run build && pm2 start ecosystem.config.js --env production && pm2 logs wms-zenith"
+    "prod:start": "npm run build && pm2 start ecosystem.config.js",
+    "prod:stop": "pm2 stop wms-zenith",
+    "prod:restart": "pm2 restart wms-zenith",
+    "prod:delete": "pm2 delete wms-zenith",
+    "prod:logs": "pm2 logs wms-zenith",
+    "prod:redeploy": "npm run prod:delete && npm run prod:start"
   },
   "repository": {
     "type": "git",
@@ -29,6 +34,7 @@
     "express-rate-limit": "^8.0.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "pm2": "^5.4.2",
     "winston": "^3.17.0",
     "zod": "^4.0.15"
   },
