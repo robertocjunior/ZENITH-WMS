@@ -1,4 +1,4 @@
-# ZENITH-WMS
+# <h1 align="center">ZENITH-WMS</h1>
 
 <img alt="gpt-oss-120" src="./docs/zenith.svg">
 
