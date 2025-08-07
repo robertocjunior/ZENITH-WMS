@@ -8,7 +8,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+// O 'rate-limit' foi removido, pois não será mais usado
 const logger = require('./logger');
 
 const app = express();
@@ -17,22 +17,20 @@ app.use(express.json());
 app.use(cors());
 app.set('trust proxy', 1);
 
-const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    max: 10,
-    message:
-        'Muitas tentativas de login a partir deste IP, por favor, tente novamente após 15 minutos.',
-    standardHeaders: true,
-    legacyHeaders: false,
-});
+// [REMOVIDO] Bloco do loginLimiter por IP foi removido
 
-const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
+const apiLimiter = require('express-rate-limit')({
+    windowMs: 15 * 60 * 1000,
     max: 200, 
     message: 'Muitas requisições para a API a partir deste IP.',
     standardHeaders: true,
     legacyHeaders: false,
 });
+
+// [NOVO] Sistema de controle de tentativas de login por dispositivo
+const loginAttempts = {};
+const MAX_ATTEMPTS = 10;
+const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutos
 
 const SANKHYA_API_URL = process.env.SANKHYA_API_URL;
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -90,7 +88,6 @@ async function getSystemBearerToken(forceRefresh = false) {
     }
 }
 
-// [CORREÇÃO] Função para consultas SELECT, que usa uma sessão de sistema temporária e isolada.
 async function callSankhyaAsSystem(serviceName, requestBody) {
     logger.http(`Executando consulta como usuário de sistema: ${serviceName}`);
     try {
@@ -116,7 +113,7 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
             { requestBody },
             { headers: { Authorization: `Bearer ${freshSystemToken}` } }
         );
-        // Logout para invalidar o token temporário e não interferir na sessão principal
+        
         await axios.post(`${SANKHYA_API_URL}/logout`, {}, {
             headers: { Authorization: `Bearer ${freshSystemToken}` }
         });
@@ -128,9 +125,8 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
     }
 }
 
-// [CORREÇÃO] Função para operações do usuário (login, transações), que usa a sessão principal.
 async function callSankhyaService(serviceName, requestBody) {
-    let token = await getSystemBearerToken(); // Usa o token global
+    let token = await getSystemBearerToken();
     const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
 
     try {
@@ -188,11 +184,21 @@ const authenticateToken = (req, res, next) => {
 };
 
 
-app.post('/login', loginLimiter, async (req, res) => {
+app.post('/login', async (req, res) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
+    
+    // [NOVO] Usa o deviceToken (ou o IP como fallback) para identificar o dispositivo
+    const deviceIdentifier = clientDeviceToken || req.ip;
+
+    // [NOVO] Verifica se o dispositivo está bloqueado
+    if (loginAttempts[deviceIdentifier] && loginAttempts[deviceIdentifier].lockedUntil > Date.now()) {
+        const remainingTime = Math.ceil((loginAttempts[deviceIdentifier].lockedUntil - Date.now()) / 60000);
+        logger.warn(`Tentativa de login bloqueada para o dispositivo ${deviceIdentifier}. Tempo restante: ${remainingTime} min.`);
+        return res.status(429).json({ message: `Muitas tentativas de login. Tente novamente em ${remainingTime} minutos.` });
+    }
+
     logger.http(`Tentativa de login para o usuário: ${username}`);
     try {
-        // [CORREÇÃO] Usa a função de sistema para consultas
         const userQueryResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
         });
@@ -208,7 +214,6 @@ app.post('/login', loginLimiter, async (req, res) => {
         });
 
         if (permAppResponse.status !== '1' || !permAppResponse.responseBody || permAppResponse.responseBody.rows.length === 0) {
-            logger.warn(`Login bloqueado para ${username} (CODUSU: ${codUsu}). Usuário não encontrado na AD_APPPERM.`);
             throw new Error('Usuário não possui permissão para acessar este aplicativo.');
         }
         const numReg = permAppResponse.responseBody.rows[0][0];
@@ -235,7 +240,14 @@ app.post('/login', loginLimiter, async (req, res) => {
             }
         }
 
-        if (!deviceIsAuthorized) {
+        if (!deviceIsAuthorized && clientDeviceToken) {
+            return res.status(403).json({
+                message: 'Dispositivo novo detectado e registrado. Solicite a um administrador para ativá-lo.',
+                deviceToken: clientDeviceToken,
+            });
+        }
+        
+        if (!clientDeviceToken) {
             finalDeviceToken = crypto.randomBytes(20).toString('hex');
             const descrDisp = req.headers['user-agent'] ? req.headers['user-agent'].substring(0, 100) : 'Dispositivo Web';
             await callSankhyaService('DatasetSP.save', {
@@ -249,7 +261,6 @@ app.post('/login', loginLimiter, async (req, res) => {
             });
         }
         
-        // [CORREÇÃO] Usa a função de serviço principal para o login, associando a sessão ao token global
         const loginResponse = await callSankhyaService('MobileLoginSP.login', {
             NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
@@ -258,6 +269,10 @@ app.post('/login', loginLimiter, async (req, res) => {
         if (loginResponse.status !== '1') {
             throw new Error(loginResponse.statusMessage || 'Credenciais de operador inválidas.');
         }
+        
+        // [NOVO] Se o login for bem-sucedido, reseta as tentativas para este dispositivo
+        delete loginAttempts[deviceIdentifier];
+
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
         const sessionPayload = { username: username, codusu: codUsu, numreg: numReg };
@@ -273,6 +288,17 @@ app.post('/login', loginLimiter, async (req, res) => {
         });
 
     } catch (error) {
+        // [NOVO] Lógica para contar tentativas de login falhas
+        if (!loginAttempts[deviceIdentifier]) {
+            loginAttempts[deviceIdentifier] = { count: 0, lockedUntil: null };
+        }
+        loginAttempts[deviceIdentifier].count++;
+
+        if (loginAttempts[deviceIdentifier].count >= MAX_ATTEMPTS) {
+            loginAttempts[deviceIdentifier].lockedUntil = Date.now() + LOCKOUT_TIME;
+            logger.error(`Dispositivo ${deviceIdentifier} bloqueado por excesso de tentativas de login.`);
+        }
+        
         let errorMessage = 'Erro durante o processo de login.';
         if (error.response && error.response.data) {
             errorMessage = error.response.data.statusMessage || JSON.stringify(error.response.data);
@@ -295,7 +321,6 @@ apiRoutes.post('/logout', (req, res) => {
     res.status(200).json({ message: 'Logout bem-sucedido.' });
 });
 
-// [CORREÇÃO] Todas as rotas de SELECT usam callSankhyaAsSystem
 apiRoutes.post('/get-warehouses', async (req, res) => {
     const { username, numreg } = req.userSession;
     logger.http(`Usuário ${username} (NUMREG: ${numreg}) solicitou a lista de armazéns.`);
@@ -593,7 +618,6 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
                 }
             };
             
-            // [CORREÇÃO] Usa callSankhyaService para ser executado como o usuário logado
             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
             
             const histRecord = {
