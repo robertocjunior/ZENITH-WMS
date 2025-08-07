@@ -13,7 +13,7 @@
     --history-header-color: #4a6a9b;
     --correction-background-color: #fff8e1;
     --correction-border-color: #ffecb3;
-    --correction-header-color: #c09b00; /* Nova cor para o cabeçalho de correção */
+    --correction-header-color: #c09b00;
 }
 
 * {
@@ -501,6 +501,9 @@ html, body {
 @keyframes spin { 100% { transform: rotate(360deg); } }
 .hidden { display: none !important; }
 
+/* ================================== */
+/* MELHORIA ESTÉTICA DO HISTÓRICO     */
+/* ================================== */
 .history-card {
     background-color: var(--history-background-color);
     border: 1px solid var(--history-border-color);
@@ -510,6 +513,16 @@ html, body {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    min-height: 220px;
+}
+
+.history-card .card-body {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 15px;
+    text-align: left;
 }
 
 .history-card .card-header {
@@ -528,25 +541,11 @@ html, body {
     font-weight: 700;
 }
 
-.history-card .card-body .product-desc {
-    font-size: 18px;
-    font-weight: 600;
-    text-align: center;
-    padding: 10px 0;
-}
-
-.history-card .card-footer .product-code {
-    background-color: #e2e8f0;
-}
-
-.history-card .card-body {
-    padding: 10px 0;
-    text-align: left;
-}
-
 .history-card .product-info {
+    display: flex; /* Garante o alinhamento vertical */
+    flex-direction: column; /* Coloca o código abaixo do nome */
+    align-items: center; /* Centraliza horizontalmente */
     text-align: center;
-    margin-bottom: 15px;
     font-size: 16px;
     font-weight: 500;
 }
@@ -556,7 +555,7 @@ html, body {
     background-color: #e2e8f0;
     padding: 2px 6px;
     border-radius: 4px;
-    margin-left: 8px;
+    margin-top: 5px; /* Adiciona espaço acima do código */
 }
 
 .history-movement, .history-location {
@@ -582,9 +581,6 @@ html, body {
     flex-shrink: 0;
 }
 
-/* ================================== */
-/* MELHORIA ESTÉTICA DO CARD DE CORREÇÃO */
-/* ================================== */
 .history-card.correction-type {
     background-color: var(--correction-background-color);
     border-color: var(--correction-border-color);
@@ -613,14 +609,11 @@ html, body {
     font-weight: 700;
 }
 .history-card.correction-type .history-movement .origin div:last-child {
-    color: #d32f2f; /* Vermelho para valor antigo */
+    color: #d32f2f;
 }
 .history-card.correction-type .history-movement .destination div:last-child {
-    color: #388e3c; /* Verde para valor novo */
+    color: #388e3c;
 }
-/* ================================== */
-/* FIM DA MELHORIA                    */
-/* ================================== */
 
 @media (max-width: 768px) {
     .details-grid { grid-template-columns: 1fr; }
