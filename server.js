@@ -698,11 +698,12 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
             };
             recordsToSave.push({
                 entityName: 'AD_IBXEND',
-                fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO'],
+                fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
                 values: {
                     2: sanitizedPayload.codarm.toString(),
                     3: sanitizedPayload.sequencia.toString(),
                     4: sanitizedPayload.quantidade.toString(),
+                    5: 'S',
                 },
             });
         } else if (type === 'transferencia' || type === 'picking') {
@@ -730,11 +731,12 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
             if (destinationItem && destinationItem[0] === sanCodProd) {
                 recordsToSave.push({
                     entityName: 'AD_IBXEND',
-                    fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO'],
+                    fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
                     values: {
                         2: sanArmazemDestino.toString(),
                         3: sanEnderecoDestino,
                         4: destinationItem[1].toString(),
+                        5: 'S',
                     },
                 });
             }
@@ -748,6 +750,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
                     'ARMDES',
                     'ENDDES',
                     'QTDPRO',
+                    'APP',
                 ],
                 values: {
                     2: sanCodArm.toString(),
@@ -755,6 +758,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
                     4: sanArmazemDestino.toString(),
                     5: sanEnderecoDestino,
                     6: sanQuantidade.toString(),
+                    7: 'S',
                 },
             });
         }
