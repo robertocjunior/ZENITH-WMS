@@ -90,6 +90,7 @@ async function getSystemBearerToken(forceRefresh = false) {
     }
 }
 
+// [CORREÇÃO] Função para consultas SELECT, que usa uma sessão de sistema temporária e isolada.
 async function callSankhyaAsSystem(serviceName, requestBody) {
     logger.http(`Executando consulta como usuário de sistema: ${serviceName}`);
     try {
@@ -115,6 +116,7 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
             { requestBody },
             { headers: { Authorization: `Bearer ${freshSystemToken}` } }
         );
+        // Logout para invalidar o token temporário e não interferir na sessão principal
         await axios.post(`${SANKHYA_API_URL}/logout`, {}, {
             headers: { Authorization: `Bearer ${freshSystemToken}` }
         });
@@ -126,8 +128,9 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
     }
 }
 
+// [CORREÇÃO] Função para operações do usuário (login, transações), que usa a sessão principal.
 async function callSankhyaService(serviceName, requestBody) {
-    let token = await getSystemBearerToken();
+    let token = await getSystemBearerToken(); // Usa o token global
     const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
 
     try {
@@ -189,6 +192,7 @@ app.post('/login', loginLimiter, async (req, res) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
     logger.http(`Tentativa de login para o usuário: ${username}`);
     try {
+        // [CORREÇÃO] Usa a função de sistema para consultas
         const userQueryResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
         });
@@ -245,6 +249,7 @@ app.post('/login', loginLimiter, async (req, res) => {
             });
         }
         
+        // [CORREÇÃO] Usa a função de serviço principal para o login, associando a sessão ao token global
         const loginResponse = await callSankhyaService('MobileLoginSP.login', {
             NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
@@ -290,6 +295,7 @@ apiRoutes.post('/logout', (req, res) => {
     res.status(200).json({ message: 'Logout bem-sucedido.' });
 });
 
+// [CORREÇÃO] Todas as rotas de SELECT usam callSankhyaAsSystem
 apiRoutes.post('/get-warehouses', async (req, res) => {
     const { username, numreg } = req.userSession;
     logger.http(`Usuário ${username} (NUMREG: ${numreg}) solicitou a lista de armazéns.`);
@@ -587,6 +593,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
                 }
             };
             
+            // [CORREÇÃO] Usa callSankhyaService para ser executado como o usuário logado
             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
             
             const histRecord = {
@@ -603,7 +610,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
                         6: qtdAnterior,
                         7: newQuantity,
                         8: codusu,
-                        9: new Date() // Preenche o novo campo de data/hora
+                        9: new Date()
                     }
                 }]
             };

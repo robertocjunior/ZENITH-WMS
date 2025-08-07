@@ -11,9 +11,9 @@
     --history-background-color: #f0f8ff;
     --history-border-color: #d6e8fa;
     --history-header-color: #4a6a9b;
-    /* [NOVO] Cores para o card de correção */
     --correction-background-color: #fff8e1;
     --correction-border-color: #ffecb3;
+    --correction-header-color: #c09b00; /* Nova cor para o cabeçalho de correção */
 }
 
 * {
@@ -582,17 +582,45 @@ html, body {
     flex-shrink: 0;
 }
 
-/* [NOVO] Estilos para o card de histórico de correção */
+/* ================================== */
+/* MELHORIA ESTÉTICA DO CARD DE CORREÇÃO */
+/* ================================== */
 .history-card.correction-type {
     background-color: var(--correction-background-color);
     border-color: var(--correction-border-color);
 }
 .history-card.correction-type .card-header p:first-child {
-    color: #c09b00;
+    color: var(--correction-header-color);
 }
 .history-card.correction-type .history-movement .arrow {
-    color: #c09b00;
+    color: var(--correction-header-color);
+    font-size: 24px;
 }
+.history-card.correction-type .history-movement .origin,
+.history-card.correction-type .history-movement .destination {
+    background-color: #fff;
+    border: 1px solid #eee;
+    padding: 12px;
+}
+.history-card.correction-type .history-movement .origin .label,
+.history-card.correction-type .history-movement .destination .label {
+    font-size: 12px;
+    color: var(--text-light);
+}
+.history-card.correction-type .history-movement .origin div:last-child,
+.history-card.correction-type .history-movement .destination div:last-child {
+    font-size: 20px;
+    font-weight: 700;
+}
+.history-card.correction-type .history-movement .origin div:last-child {
+    color: #d32f2f; /* Vermelho para valor antigo */
+}
+.history-card.correction-type .history-movement .destination div:last-child {
+    color: #388e3c; /* Verde para valor novo */
+}
+/* ================================== */
+/* FIM DA MELHORIA                    */
+/* ================================== */
 
 @media (max-width: 768px) {
     .details-grid { grid-template-columns: 1fr; }
