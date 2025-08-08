@@ -8,23 +8,22 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const helmet = require('helmet');
-const cookieParser = require('cookie-parser'); // [NOVO] Importa o cookie-parser
+const cookieParser = require('cookie-parser');
 const logger = require('./logger');
 
 const app = express();
 
-// [ALTERAÇÃO] Configuração de segurança aprimorada com Helmet e CSP
 app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        "script-src": ["'self'"], // Permite scripts apenas da mesma origem
-        "style-src": ["'self'", "fonts.googleapis.com", "'unsafe-inline'"], // Permite estilos do site, Google Fonts e inline
-        "font-src": ["'self'", "fonts.gstatic.com"], // Permite fontes do site e do Google Fonts
-        "connect-src": ["'self'"], // Permite conexões (API calls) apenas para a mesma origem
-        "img-src": ["'self'", "data:"], // Permite imagens do site e data URIs
-        "object-src": ["'none'"], // Desabilita plugins como Flash
+        "script-src": ["'self'"],
+        "style-src": ["'self'", "fonts.googleapis.com", "'unsafe-inline'"],
+        "font-src": ["'self'", "fonts.gstatic.com"],
+        "connect-src": ["'self'"],
+        "img-src": ["'self'", "data:"],
+        "object-src": ["'none'"],
         "upgrade-insecure-requests": [],
       },
     },
@@ -33,7 +32,7 @@ app.use(
 
 app.use(express.json());
 app.use(cors());
-app.use(cookieParser()); // [NOVO] Adiciona o middleware para cookies
+app.use(cookieParser());
 app.set('trust proxy', 1);
 
 const apiLimiter = require('express-rate-limit')({
@@ -52,7 +51,6 @@ const SANKHYA_API_URL = process.env.SANKHYA_API_URL;
 const JWT_SECRET = process.env.JWT_SECRET;
 let systemBearerToken = null;
 
-// Funções utilitárias (sanitizeStringForSql, sanitizeNumber, formatDbDateToApi) permanecem inalteradas...
 function sanitizeStringForSql(str) {
     if (str === null || str === undefined) return '';
     if (typeof str !== 'string') return '';
@@ -77,7 +75,6 @@ function formatDbDateToApi(dbDate) {
     return `${day}/${month}/${year}`;
 }
 
-// Funções de chamada ao Sankhya (getSystemBearerToken, callSankhyaAsSystem, callSankhyaService) permanecem inalteradas...
 async function getSystemBearerToken(forceRefresh = false) {
     if (systemBearerToken && !forceRefresh) return systemBearerToken;
     try {
@@ -135,6 +132,7 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
         await axios.post(`${SANKHYA_API_URL}/logout`, {}, {
             headers: { Authorization: `Bearer ${freshSystemToken}` }
         });
+
         return serviceResponse.data;
     } catch (error) {
         const errorMessage = error.response?.data?.statusMessage || `Falha ao executar ${serviceName} como sistema.`;
@@ -180,9 +178,8 @@ async function callSankhyaService(serviceName, requestBody) {
     }
 }
 
-// [ALTERAÇÃO] Middleware agora lê o token do cookie
 const authenticateToken = (req, res, next) => {
-    const token = req.cookies.sessionToken; // Lê o token do cookie
+    const token = req.cookies.sessionToken;
     if (token == null) {
         return res.sendStatus(401);
     }
@@ -196,7 +193,6 @@ const authenticateToken = (req, res, next) => {
 };
 
 
-// [ALTERAÇÃO] Rota de login agora envia o token como um cookie HttpOnly
 app.post('/login', async (req, res) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
     
@@ -210,7 +206,6 @@ app.post('/login', async (req, res) => {
 
     logger.http(`Tentativa de login para o usuário: ${username}`);
     try {
-        // Lógica de verificação de usuário e dispositivo (inalterada)...
         const userQueryResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
         });
@@ -252,14 +247,7 @@ app.post('/login', async (req, res) => {
             }
         }
 
-        if (!deviceIsAuthorized && clientDeviceToken) {
-             return res.status(403).json({
-                message: 'Dispositivo novo detectado e registrado. Solicite a um administrador para ativá-lo.',
-                deviceToken: clientDeviceToken,
-            });
-        }
-        
-        if (!clientDeviceToken) {
+        if (!deviceIsAuthorized) {
             finalDeviceToken = crypto.randomBytes(20).toString('hex');
             const descrDisp = req.headers['user-agent'] ? req.headers['user-agent'].substring(0, 100) : 'Dispositivo Web';
             await callSankhyaService('DatasetSP.save', {
@@ -283,22 +271,21 @@ app.post('/login', async (req, res) => {
         }
         
         delete loginAttempts[deviceIdentifier];
+
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
         const sessionPayload = { username: username, codusu: codUsu, numreg: numReg };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
 
-        // [ALTERAÇÃO] Envia o token como um cookie seguro
         res.cookie('sessionToken', sessionToken, {
-            httpOnly: true, // Impede acesso via JavaScript no cliente
-            secure: process.env.NODE_ENV === 'production', // Envia apenas em HTTPS na produção
-            sameSite: 'strict', // Proteção contra ataques CSRF
-            maxAge: 8 * 60 * 60 * 1000 // 8 horas
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 8 * 60 * 60 * 1000
         });
 
         logger.info(`Usuário ${username} logado com sucesso.`);
         
-        // Envia a resposta sem o token no corpo
         res.json({
             username,
             codusu: codUsu,
@@ -307,7 +294,6 @@ app.post('/login', async (req, res) => {
         });
 
     } catch (error) {
-        // Lógica de contagem de tentativas (inalterada)...
         if (!loginAttempts[deviceIdentifier]) {
             loginAttempts[deviceIdentifier] = { count: 0, lockedUntil: null };
         }
@@ -334,16 +320,13 @@ const apiRoutes = express.Router();
 apiRoutes.use(apiLimiter);
 apiRoutes.use(authenticateToken);
 
-// [ALTERAÇÃO] Rota de logout agora limpa o cookie
 apiRoutes.post('/logout', (req, res) => {
     const { username } = req.userSession;
     logger.info(`Usuário ${username} realizou logout.`);
-    res.clearCookie('sessionToken'); // Limpa o cookie de sessão
+    res.clearCookie('sessionToken');
     res.status(200).json({ message: 'Logout bem-sucedido.' });
 });
 
-// O restante das rotas da API (get-warehouses, get-permissions, etc.) permanece inalterado...
-// ... (código das outras rotas) ...
 apiRoutes.post('/get-warehouses', async (req, res) => {
     const { username, numreg } = req.userSession;
     logger.http(`Usuário ${username} (NUMREG: ${numreg}) solicitou a lista de armazéns.`);
@@ -750,7 +733,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
                     'ARMDES',
                     'ENDDES',
                     'QTDPRO',
-                    'APP',
+                    'APP'
                 ],
                 values: {
                     2: sanCodArm.toString(),
@@ -758,7 +741,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
                     4: sanArmazemDestino.toString(),
                     5: sanEnderecoDestino,
                     6: sanQuantidade.toString(),
-                    7: 'S',
+                    7: 'S'
                 },
             });
         }
