@@ -28,7 +28,7 @@ async function authenticatedFetch(endpoint, body = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     });
-    
+
     // [CORREÇÃO] Lida melhor com o erro de validação para exibir uma mensagem clara
     if (!response.ok) {
         if (response.status === 401 || response.status === 403) handleLogout(true);
@@ -40,7 +40,7 @@ async function authenticatedFetch(endpoint, body = {}) {
         }
         throw new Error(errorData.message || "Erro na comunicação com o servidor.");
     }
-    
+
     // Se a resposta for OK mas vazia (código 204, por exemplo), retorna nulo.
     if (response.status === 204) {
         return null;
@@ -55,7 +55,7 @@ async function handleLogin() {
     const username = usernameInput.value.trim();
     const password = passwordInput.value.trim();
     if (!username || !password) return openConfirmModal("Por favor, preencha o usuário e a senha.");
-    
+
     showLoading(true);
     try {
         const deviceToken = Device.getToken();
@@ -71,7 +71,7 @@ async function handleLogin() {
             }
             throw new Error(data.message);
         }
-        
+
         Session.saveUsername(data.username);
         Session.saveCodUsu(data.codusu);
         Session.saveNumReg(data.numreg);
@@ -82,7 +82,7 @@ async function handleLogin() {
         InactivityTimer.start();
         await fetchAndPopulateWarehouses();
     } catch (error) {
-        Session.clearUsername(); 
+        Session.clearUsername();
         Session.clearCodUsu();
         Session.clearNumReg();
         openConfirmModal(error.message, "Falha no Login");
@@ -96,12 +96,12 @@ function resetUIState() {
     document.getElementById('armazem-select').innerHTML = '<option value="">Selecione um Armazém</option>';
     document.getElementById('filtro-sequencia').value = '';
     document.getElementById('results-container').innerHTML = '';
-    
+
     const emptyState = document.getElementById('empty-state');
     emptyState.classList.remove('hidden');
     emptyState.querySelector('.material-icons').textContent = 'warehouse';
-    emptyState.querySelector('p').textContent = "Nenhum resultado para exibir";
-    emptyState.querySelector('span').textContent = "Selecione um armazém para começar";
+document.getElementById('empty-state-message').textContent = "Nenhum resultado para exibir";
+document.getElementById('empty-state-subtext').textContent = "Selecione um armazém para começar";
 
     document.getElementById('details-content').innerHTML = '';
     currentItemDetails = null;
@@ -139,7 +139,7 @@ async function fetchAndPopulateWarehouses() {
         const armazens = await authenticatedFetch('/get-warehouses');
         const selectPrincipal = document.getElementById('armazem-select');
         const selectModal = document.getElementById('modal-armdes-transfer');
-        
+
         if (armazens.length === 0) {
             selectPrincipal.innerHTML = '<option value="">Nenhum armazém permitido</option>';
             document.getElementById('btn-consultar').disabled = true;
@@ -176,7 +176,7 @@ async function handleConsulta() {
         const filtro = document.getElementById('filtro-sequencia').value;
         const rows = await authenticatedFetch('/search-items', { codArm, filtro });
         renderizarCards(rows);
-    } catch(error) {
+    } catch (error) {
         openConfirmModal(error.message, "Erro na Consulta");
     } finally {
         showLoading(false);
@@ -188,15 +188,15 @@ async function fetchAndShowDetails(sequencia) {
     updateActionButtonsVisibility({ transfer: false, baixa: false, pick: false, corre: false });
     try {
         const codArm = document.getElementById('armazem-select').value;
-        
+
         const [details, permissions] = await Promise.all([
             authenticatedFetch('/get-item-details', { codArm, sequencia: String(sequencia) }),
             authenticatedFetch('/get-permissions')
         ]);
-        
+
         populateDetails(details);
         updateActionButtonsVisibility(permissions);
-        
+
         switchView('details');
     } catch (error) {
         openConfirmModal(error.message, "Erro");
@@ -253,7 +253,7 @@ async function handleTransfer() {
     if (isNaN(quantidade) || quantidade <= 0 || quantidade > currentItemDetails.quantidade) return openConfirmModal("Quantidade inválida.");
     if (!armazemDestino) return openConfirmModal("Selecione um armazém de destino.");
     if (!enderecoDestino) return openConfirmModal("Insira o endereço de destino.");
-    
+
     closeTransferModal();
     showLoading(true);
     try {
@@ -284,10 +284,10 @@ async function handlePicking() {
     try {
         const payload = {
             origem: currentItemDetails,
-            destino: { 
-                armazemDestino: currentItemDetails.codarm.toString(), 
-                enderecoDestino: enderecoDestino, 
-                quantidade: quantidade 
+            destino: {
+                armazemDestino: currentItemDetails.codarm.toString(),
+                enderecoDestino: enderecoDestino,
+                quantidade: quantidade
             }
         };
         const result = await authenticatedFetch('/execute-transaction', { type: 'picking', payload });
@@ -308,7 +308,7 @@ async function handleCorrecao() {
     if (isNaN(newQuantity) || newQuantity < 0) {
         return openConfirmModal("A nova quantidade inserida é inválida.");
     }
-    
+
     closeCorrecaoModal();
     showLoading(true);
 
@@ -339,17 +339,17 @@ async function openPickingModal() {
     selectPicking.innerHTML = '<option value="">Buscando locais...</option>';
     selectPicking.disabled = true;
     document.getElementById('picking-modal').classList.remove('hidden');
-    
+
     showLoading(true);
     try {
         // [CORREÇÃO] Garante que os dados numéricos sejam enviados como números
         const { codarm, codprod, sequencia } = currentItemDetails;
-        const locations = await authenticatedFetch('/get-picking-locations', { 
-            codarm: Number(codarm), 
-            codprod: Number(codprod), 
+        const locations = await authenticatedFetch('/get-picking-locations', {
+            codarm: Number(codarm),
+            codprod: Number(codprod),
             sequencia: Number(sequencia)
         });
-        
+
         selectPicking.innerHTML = locations.length ? '<option value="">Selecione um destino</option>' : '<option value="">Nenhum local de picking encontrado</option>';
         locations.forEach(([seqEnd, descrProd]) => {
             const option = document.createElement('option');
@@ -373,8 +373,8 @@ function renderizarCards(rows) {
     if (!rows || rows.length === 0) {
         emptyState.classList.remove('hidden');
         emptyState.querySelector('.material-icons').textContent = 'search_off';
-        emptyState.querySelector('p').textContent = "Nenhum resultado encontrado";
-        emptyState.querySelector('span').textContent = "Tente uma busca com termos diferentes.";
+        document.getElementById('empty-state-message').textContent = "Nenhum resultado encontrado";
+        document.getElementById('empty-state-subtext').textContent = "Tente uma busca com termos diferentes.";
         return;
     }
     emptyState.classList.add('hidden');
@@ -414,48 +414,69 @@ function renderHistoryCards(rows) {
         return;
     }
     emptyState.classList.add('hidden');
-    rows.forEach(row => {
-        const [tipo, dataOrdem, hora, codarm, seqend, armdes, enddes, codprod, descrprod, marca, derivacao, quantAnt, qtdAtual, idOperacao] = row;
-        
+
+    // Agrupa as linhas pelo ID da Operação
+    const groupedOperations = rows.reduce((acc, row) => {
+        const opId = row[13];
+        if (!acc[opId]) {
+            acc[opId] = [];
+        }
+        acc[opId].push(row);
+        return acc;
+    }, {});
+
+    // Itera sobre os grupos para criar os cards
+    for (const group of Object.values(groupedOperations)) {
+        const firstRow = group[0];
+        const [tipo, dataOrdem, hora, , , , , codprod, descrprod, marca, derivacao, quantAnt, qtdAtual, idOperacao] = firstRow;
+
         const card = document.createElement('div');
         card.className = 'history-card';
+        if (tipo === 'CORRECAO') {
+            card.classList.add('correction-type');
+        }
 
+        // Informações do produto (comum a todas as ações do grupo)
         let productDisplay = descrprod || 'Produto';
         if (marca) productDisplay += ` - ${marca}`;
         if (derivacao) productDisplay += ` - ${derivacao}`;
         let productHtml = descrprod ? `<div class="product-info">${productDisplay}<span class="product-code">Cód: ${codprod}</span></div>` : '';
-        
-        let movementHtml = '';
+
+        let actionsHtml = '';
         let opTypeLabel = '';
 
         if (tipo === 'CORRECAO') {
-            card.classList.add('correction-type');
             opTypeLabel = 'Correção';
-            movementHtml = `
+            // Monta o card de correção como antes
+            const [ , , , codarm, seqend ] = firstRow;
+            actionsHtml = `
                 <div class="history-location">
-                    <div class="location">
-                        <div class="label">Local da Correção</div>
-                        <div>${codarm} &rarr; ${seqend}</div>
-                    </div>
+                    <div class="location"><div class="label">Local da Correção</div><div>${codarm} &rarr; ${seqend}</div></div>
                 </div>
                 <div class="history-movement">
                     <div class="origin"><div class="label">Qtd. Anterior</div><div>${quantAnt}</div></div>
                     <span class="material-icons arrow">trending_flat</span>
                     <div class="destination"><div class="label">Qtd. Corrigida</div><div>${qtdAtual}</div></div>
-                </div>
-            `;
+                </div>`;
         } else { // tipo 'MOV'
             opTypeLabel = 'Operação';
-            if (armdes && enddes) {
-                movementHtml = `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
-            } else {
-                movementHtml = `<div class="history-location"><div class="location"><div class="label">Local da Baixa</div><div>${codarm} &rarr; ${seqend}</div></div></div>`;
-            }
+            // Itera sobre CADA ação dentro do grupo
+            group.forEach(actionRow => {
+                const [ , , , codarm, seqend, armdes, enddes ] = actionRow;
+                if (armdes && enddes) {
+                    actionsHtml += `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
+                } else {
+                    actionsHtml += `<div class="history-location"><div class="location"><div class="label">Local da Baixa</div><div>${codarm} &rarr; ${seqend}</div></div></div>`;
+                }
+            });
         }
 
-        card.innerHTML = `<div class="card-header"><p>${opTypeLabel}: <span>${idOperacao}</span></p><p>${hora}</p></div><div class="card-body">${productHtml}${movementHtml}</div>`;
+        const headerHtml = `<div class="card-header"><p>${opTypeLabel}: <span>${idOperacao}</span></p><p>${hora}</p></div>`;
+        const bodyHtml = `<div class="card-body">${productHtml}${actionsHtml}</div>`;
+        
+        card.innerHTML = headerHtml + bodyHtml;
         container.appendChild(card);
-    });
+    }
 }
 
 function updateActionButtonsVisibility(permissions) {
@@ -465,16 +486,28 @@ function updateActionButtonsVisibility(permissions) {
     const btnPicking = document.querySelector('.btn-picking');
     const btnCorrecao = document.querySelector('.btn-correcao');
 
-    const hasAnyPermission = permissions.baixa || permissions.transfer || permissions.pick || permissions.corre;
+    // Lógica condicional para o botão de Baixa
+    let showBaixaButton = false;
+    if (currentItemDetails && currentItemDetails.endpic === 'S') {
+        // Se for um endereço de Picking, a permissão BXAPICK é usada
+        showBaixaButton = permissions.bxaPick;
+    } else {
+        // Senão, a permissão BAIXA padrão é usada
+        showBaixaButton = permissions.baixa;
+    }
+
+    // Aplica a visibilidade para cada botão
+    if (btnBaixar) btnBaixar.style.display = showBaixaButton ? 'flex' : 'none';
+    if (btnTransferir) btnTransferir.style.display = permissions.transfer ? 'flex' : 'none';
+    if (btnPicking) btnPicking.style.display = permissions.pick ? 'flex' : 'none';
+    if (btnCorrecao) btnCorrecao.style.display = permissions.corre ? 'flex' : 'none';
+
+    // Verifica se qualquer botão está visível para mostrar a barra de ações
+    const hasAnyPermission = showBaixaButton || permissions.transfer || permissions.pick || permissions.corre;
 
     if (actionButtonsContainer) {
         actionButtonsContainer.style.display = hasAnyPermission ? 'flex' : 'none';
     }
-
-    if (btnBaixar) btnBaixar.style.display = permissions.baixa ? 'flex' : 'none';
-    if (btnTransferir) btnTransferir.style.display = permissions.transfer ? 'flex' : 'none';
-    if (btnPicking) btnPicking.style.display = permissions.pick ? 'flex' : 'none';
-    if (btnCorrecao) btnCorrecao.style.display = permissions.corre ? 'flex' : 'none';
 }
 
 
@@ -486,7 +519,7 @@ function formatarData(dataString) {
 
 function switchView(viewName) {
     document.querySelectorAll('#app-container .page').forEach(p => p.classList.remove('active'));
-    
+
     const loginPage = document.getElementById('login-page');
     const appContainer = document.getElementById('app-container');
 
@@ -496,7 +529,7 @@ function switchView(viewName) {
     } else {
         loginPage.classList.add('hidden');
         appContainer.classList.remove('hidden');
-        
+
         const activePage = document.getElementById(`${viewName}-page`);
         if (activePage) {
             activePage.classList.add('active');
@@ -531,18 +564,18 @@ function openCorrecaoModal() {
     if (!currentItemDetails) return;
     document.getElementById('modal-qtd-disponivel-correcao').textContent = currentItemDetails.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-correcao');
-    qtdInput.value = ''; 
+    qtdInput.value = '';
     document.getElementById('correcao-modal').classList.remove('hidden');
 }
-function closeCorrecaoModal() { 
-    document.getElementById('correcao-modal').classList.add('hidden'); 
+function closeCorrecaoModal() {
+    document.getElementById('correcao-modal').classList.add('hidden');
 }
 
 const loading = document.getElementById('loading');
 function showLoading(show) { loading.classList.toggle('hidden', !show); }
-function openProfilePanel() { document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-panel').classList.add('active'); document.getElementById('profile-user-info').textContent = `${Session.getCodUsu()} - ${Session.getUsername()}`;}
+function openProfilePanel() { document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-panel').classList.add('active'); document.getElementById('profile-user-info').textContent = `${Session.getCodUsu()} - ${Session.getUsername()}`; }
 function closeProfilePanel() { document.getElementById('profile-overlay').classList.add('hidden'); document.getElementById('profile-panel').classList.remove('active'); }
-const InactivityTimer = { timeoutID: null, timeoutInMilliseconds: 3600 * 1000, start: function() { this.clear(); this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds); }, reset: function() { this.start(); }, clear: function() { if (this.timeoutID) clearTimeout(this.timeoutID); }, forceLogout: function() { handleLogout(true); }};
+const InactivityTimer = { timeoutID: null, timeoutInMilliseconds: 3600 * 1000, start: function () { this.clear(); this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds); }, reset: function () { this.start(); }, clear: function () { if (this.timeoutID) clearTimeout(this.timeoutID); }, forceLogout: function () { handleLogout(true); } };
 const activityEvents = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
 let throttleTimeout = null;
 const throttledReset = () => { if (throttleTimeout) return; throttleTimeout = setTimeout(() => { InactivityTimer.reset(); throttleTimeout = null; }, 500); };

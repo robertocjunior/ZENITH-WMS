@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WMS Zenith</title>
-    
+
     <meta name="theme-color" content="#00529B">
     <link rel="icon" href="/icons/icon32x32.png" type="image/png" sizes="32x32">
     <link rel="icon" href="/icons/icon16x16.png" type="image/png" sizes="16x16">
@@ -13,6 +14,7 @@
     <link rel="manifest" href="/manifest.json">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
+
 <body>
     <div id="login-page" class="page active">
         <div class="login-container">
@@ -58,11 +60,11 @@
                 </div>
             </header>
             <main id="results-container" class="results-container"></main>
-            
+
             <div id="empty-state" class="empty-state">
                 <span class="material-icons">warehouse</span>
-                <p>Nenhum resultado para exibir</p>
-                <span>Selecione um armazém para começar</span>
+                <p id="empty-state-message">Nenhum resultado para exibir</p>
+                <span id="empty-state-subtext">Selecione um armazém para começar</span>
             </div>
         </div>
 
@@ -144,7 +146,8 @@
             </div>
             <div class="modal-input-group">
                 <label for="modal-enddes-transfer">Endereço de Destino:</label>
-                <input type="text" id="modal-enddes-transfer" placeholder="Digite o endereço de destino" autocomplete="off">
+                <input type="text" id="modal-enddes-transfer" placeholder="Digite o endereço de destino"
+                    autocomplete="off">
             </div>
             <div class="modal-actions">
                 <button id="btn-cancelar-transfer" class="btn-modal btn-cancel">Cancelar</button>
@@ -199,7 +202,8 @@
             </div>
         </div>
     </div>
-    
+
     <script type="module" src="/src/app.js"></script>
 </body>
+
 </html>

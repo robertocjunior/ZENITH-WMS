@@ -500,7 +500,7 @@ html, body {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 15px;
     text-align: left;
 }
@@ -604,4 +604,21 @@ html, body {
     .warehouse-selector { flex-direction: column; align-items: stretch; }
     .warehouse-selector select { width: 100%; }
     .header-left-items { justify-content: space-between; width: 100%;}
+}
+
+@media (max-width: 480px) {
+    /* 1. Garante que o card possa crescer para caber o conteúdo */
+    .history-card {
+        min-height: auto;
+    }
+
+    /* 2. Força a linha de Origem/Destino a ficar na HORIZONTAL */
+    .history-movement {
+        flex-direction: row;
+    }
+
+    /* 3. Garante que a seta NÃO seja rotacionada */
+    .history-movement .arrow {
+        transform: none;
+    }
 }
