@@ -129,9 +129,7 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
             { headers: { Authorization: `Bearer ${freshSystemToken}` } }
         );
         
-        await axios.post(`${SANKHYA_API_URL}/logout`, {}, {
-            headers: { Authorization: `Bearer ${freshSystemToken}` }
-        });
+        // A chamada de logout foi REMOVIDA daqui. Este é o ponto principal da correção.
 
         return serviceResponse.data;
     } catch (error) {

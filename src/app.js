@@ -5,9 +5,6 @@ import { PROXY_URL } from './config.js';
 let currentItemDetails = null;
 
 const Session = {
-    getToken: () => localStorage.getItem('sessionToken'),
-    saveToken: (token) => localStorage.setItem('sessionToken', token),
-    clearToken: () => localStorage.removeItem('sessionToken'),
     getUsername: () => localStorage.getItem('username'),
     saveUsername: (username) => localStorage.setItem('username', username),
     clearUsername: () => localStorage.removeItem('username'),
@@ -26,14 +23,9 @@ const Device = {
 };
 
 async function authenticatedFetch(endpoint, body = {}) {
-    const token = Session.getToken();
-    if (!token) {
-        handleLogout();
-        throw new Error("Sessão inválida. Por favor, faça login novamente.");
-    }
     const response = await fetch(`${PROXY_URL}/api${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     });
     
@@ -79,7 +71,7 @@ async function handleLogin() {
             }
             throw new Error(data.message);
         }
-        Session.saveToken(data.sessionToken);
+        
         Session.saveUsername(data.username);
         Session.saveCodUsu(data.codusu);
         Session.saveNumReg(data.numreg);
@@ -90,7 +82,6 @@ async function handleLogin() {
         InactivityTimer.start();
         await fetchAndPopulateWarehouses();
     } catch (error) {
-        Session.clearToken(); 
         Session.clearUsername(); 
         Session.clearCodUsu();
         Session.clearNumReg();
@@ -130,7 +121,6 @@ async function handleLogout(fromInactivity = false) {
             console.error("Falha ao notificar servidor do logout:", e.message);
         }
     }
-    Session.clearToken();
     Session.clearUsername();
     Session.clearCodUsu();
     Session.clearNumReg();
@@ -550,7 +540,7 @@ function closeCorrecaoModal() {
 
 const loading = document.getElementById('loading');
 function showLoading(show) { loading.classList.toggle('hidden', !show); }
-function openProfilePanel() { document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-panel').classList.add('active'); document.getElementById('profile-user-info').textContent = `${Session.getCodUsu()} - ${Session.getUsername()}`; document.getElementById('session-hash').textContent = Session.getToken(); }
+function openProfilePanel() { document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-panel').classList.add('active'); document.getElementById('profile-user-info').textContent = `${Session.getCodUsu()} - ${Session.getUsername()}`;}
 function closeProfilePanel() { document.getElementById('profile-overlay').classList.add('hidden'); document.getElementById('profile-panel').classList.remove('active'); }
 const InactivityTimer = { timeoutID: null, timeoutInMilliseconds: 3600 * 1000, start: function() { this.clear(); this.timeoutID = setTimeout(() => this.forceLogout(), this.timeoutInMilliseconds); }, reset: function() { this.start(); }, clear: function() { if (this.timeoutID) clearTimeout(this.timeoutID); }, forceLogout: function() { handleLogout(true); }};
 const activityEvents = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];

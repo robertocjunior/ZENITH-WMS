@@ -412,23 +412,6 @@ html, body {
     border-top: 1px solid var(--border-color);
     flex-shrink: 0;
 }
-.session-hash-container {
-    margin-top: 15px;
-}
-.session-hash-container label {
-    font-size: 12px;
-    color: var(--text-light);
-}
-#session-hash {
-    font-size: 11px;
-    color: var(--text-light);
-    background-color: var(--background-color);
-    padding: 8px;
-    border-radius: 4px;
-    margin-top: 5px;
-    word-break: break-all;
-    font-family: monospace;
-}
 
 .modal-overlay {
     position: fixed;
