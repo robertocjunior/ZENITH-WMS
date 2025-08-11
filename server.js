@@ -377,7 +377,7 @@ apiRoutes.post('/get-permissions', async (req, res) => {
 	const { username, codusu } = req.userSession;
 	logger.http(`Verificando permissões para o usuário ${username} (CODUSU: ${codusu}).`);
 	try {
-		const sql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+		const sql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
 		const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
 
 		if (data.status !== '1' || !data.responseBody) {
@@ -395,10 +395,11 @@ apiRoutes.post('/get-permissions', async (req, res) => {
 			transfer: perms[1] === 'S',
 			pick: perms[2] === 'S',
 			corre: perms[3] === 'S',
-			bxaPick: perms[4] === 'S'
+			bxaPick: perms[4] === 'S',
+			criaPick: perms[5] === 'S'
 		};
 
-		logger.info(`Permissões para ${username}: Baixa=${permissions.baixa}, Transfer=${permissions.transfer}, Pick=${permissions.pick}, Corre=${permissions.corre} BxaPick=${permissions.bxaPick}.`);
+		logger.info(`Permissões para ${username}: Baixa=${permissions.baixa}, Transfer=${permissions.transfer}, Pick=${permissions.pick}, Corre=${permissions.corre}, BxaPick=${permissions.bxaPick}, CriaPick=${permissions.criaPick}.`);
 		res.json(permissions);
 
 	} catch (error) {
@@ -584,7 +585,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 	logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
 
 	try {
-		const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+		const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
 		const permData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: permCheckSql });
 		if (!permData.responseBody || permData.responseBody.rows.length === 0) {
 			throw new Error('Você não tem permissão para esta ação.');
@@ -715,7 +716,8 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 			});
 		} else if (type === 'transferencia' || type === 'picking') {
 			const { codarm, sequencia, codprod } = payload.origem;
-			const { armazemDestino, enderecoDestino, quantidade } = payload.destino;
+			// [CORREÇÃO] A variável 'criarPick' é extraída do payload aqui
+			const { armazemDestino, enderecoDestino, quantidade, criarPick } = payload.destino;
 
 			const sanCodArm = sanitizeNumber(codarm);
 			const sanSequencia = sanitizeNumber(sequencia);
@@ -749,16 +751,7 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 			}
 			recordsToSave.push({
 				entityName: 'AD_IBXEND',
-				fields: [
-					'SEQITE',
-					'SEQBAI',
-					'CODARM',
-					'SEQEND',
-					'ARMDES',
-					'ENDDES',
-					'QTDPRO',
-					'APP'
-				],
+				fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'ARMDES', 'ENDDES', 'QTDPRO', 'APP'],
 				values: {
 					2: sanCodArm.toString(),
 					3: sanSequencia.toString(),
@@ -768,6 +761,37 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 					7: 'S'
 				},
 			});
+
+			// [CORREÇÃO] Bloco movido para DENTRO do escopo correto, onde as variáveis de destino são visíveis.
+			if (type === 'transferencia' && criarPick === true) {
+				const criaPickPerm = perms[5] === 'S';
+				if (criaPickPerm) {
+					logger.info(`Opção 'Criar Picking' ativada para o destino: ${sanEnderecoDestino}`);
+					const updateRequestBody = {
+						entityName: 'CADEND', // Conforme seu exemplo
+						standAlone: false,
+						fields: ['CODARM', 'SEQEND', 'ENDPIC'], // Campos como array
+						records: [{
+							pk: {
+								CODARM: sanArmazemDestino.toString(),
+								SEQEND: sanEnderecoDestino
+							},
+							values: {
+								'2': 'S' // O índice '2' corresponde ao campo 'ENDPIC' na lista acima
+							}
+						}]
+					};
+					const updateResult = await callSankhyaService('DatasetSP.save', updateRequestBody);
+
+					if (updateResult.status !== '1') {
+						logger.warn(`Falha ao definir ENDPIC='S' no destino. Mensagem: ${updateResult.statusMessage}`);
+					} else {
+						logger.info(`Destino ${sanEnderecoDestino} no armazém ${sanArmazemDestino} foi definido como um local de picking.`);
+					}
+				} else {
+					logger.warn(`Usuário ${username} tentou usar 'Criar Picking' sem ter a permissão CRIAPICK='S'.`);
+				}
+			}
 		}
 
 		for (const record of recordsToSave) {
@@ -842,7 +866,6 @@ apiRoutes.post('/execute-transaction', async (req, res) => {
 			.json({ message: error.message || 'Ocorreu um erro ao executar a transação.' });
 	}
 });
-
 
 // ======================================================
 // REGISTRO DE ROTAS E SERVIDOR DE ARQUIVOS

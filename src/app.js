@@ -3,6 +3,7 @@ import './style.css';
 import { PROXY_URL } from './config.js';
 
 let currentItemDetails = null;
+let userPermissions = null;
 
 const Session = {
     getUsername: () => localStorage.getItem('username'),
@@ -100,8 +101,8 @@ function resetUIState() {
     const emptyState = document.getElementById('empty-state');
     emptyState.classList.remove('hidden');
     emptyState.querySelector('.material-icons').textContent = 'warehouse';
-document.getElementById('empty-state-message').textContent = "Nenhum resultado para exibir";
-document.getElementById('empty-state-subtext').textContent = "Selecione um armazém para começar";
+    document.getElementById('empty-state-message').textContent = "Nenhum resultado para exibir";
+    document.getElementById('empty-state-subtext').textContent = "Selecione um armazém para começar";
 
     document.getElementById('details-content').innerHTML = '';
     currentItemDetails = null;
@@ -113,13 +114,12 @@ document.getElementById('empty-state-subtext').textContent = "Selecione um armaz
 
 async function handleLogout(fromInactivity = false) {
     closeProfilePanel();
-    const token = Session.getToken();
-    if (token) {
-        try {
-            await authenticatedFetch('/logout');
-        } catch (e) {
-            console.error("Falha ao notificar servidor do logout:", e.message);
-        }
+    try {
+        // A chamada de logout é autenticada automaticamente pelo cookie
+        // A verificação "if (token)" foi removida daqui, pois era o erro.
+        await authenticatedFetch('/logout');
+    } catch (e) {
+        console.error("Falha ao notificar servidor do logout:", e.message);
     }
     Session.clearUsername();
     Session.clearCodUsu();
@@ -194,6 +194,8 @@ async function fetchAndShowDetails(sequencia) {
             authenticatedFetch('/get-permissions')
         ]);
 
+        userPermissions = permissions;
+
         populateDetails(details);
         updateActionButtonsVisibility(permissions);
 
@@ -249,6 +251,7 @@ async function handleTransfer() {
     const quantidade = parseInt(document.getElementById('modal-qtd-transfer').value, 10);
     const armazemDestino = document.getElementById('modal-armdes-transfer').value;
     const enderecoDestino = document.getElementById('modal-enddes-transfer').value.trim();
+    const criarPick = document.getElementById('checkbox-criar-picking').checked;
 
     if (isNaN(quantidade) || quantidade <= 0 || quantidade > currentItemDetails.quantidade) return openConfirmModal("Quantidade inválida.");
     if (!armazemDestino) return openConfirmModal("Selecione um armazém de destino.");
@@ -259,7 +262,7 @@ async function handleTransfer() {
     try {
         const payload = {
             origem: currentItemDetails,
-            destino: { armazemDestino, enderecoDestino, quantidade }
+            destino: { armazemDestino, enderecoDestino, quantidade, criarPick }
         };
         const result = await authenticatedFetch('/execute-transaction', { type: 'transferencia', payload });
         openConfirmModal(result.message, 'Sucesso!');
@@ -448,7 +451,7 @@ function renderHistoryCards(rows) {
         if (tipo === 'CORRECAO') {
             opTypeLabel = 'Correção';
             // Monta o card de correção como antes
-            const [ , , , codarm, seqend ] = firstRow;
+            const [, , , codarm, seqend] = firstRow;
             actionsHtml = `
                 <div class="history-location">
                     <div class="location"><div class="label">Local da Correção</div><div>${codarm} &rarr; ${seqend}</div></div>
@@ -462,7 +465,7 @@ function renderHistoryCards(rows) {
             opTypeLabel = 'Operação';
             // Itera sobre CADA ação dentro do grupo
             group.forEach(actionRow => {
-                const [ , , , codarm, seqend, armdes, enddes ] = actionRow;
+                const [, , , codarm, seqend, armdes, enddes] = actionRow;
                 if (armdes && enddes) {
                     actionsHtml += `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
                 } else {
@@ -473,7 +476,7 @@ function renderHistoryCards(rows) {
 
         const headerHtml = `<div class="card-header"><p>${opTypeLabel}: <span>${idOperacao}</span></p><p>${hora}</p></div>`;
         const bodyHtml = `<div class="card-body">${productHtml}${actionsHtml}</div>`;
-        
+
         card.innerHTML = headerHtml + bodyHtml;
         container.appendChild(card);
     }
@@ -486,24 +489,29 @@ function updateActionButtonsVisibility(permissions) {
     const btnPicking = document.querySelector('.btn-picking');
     const btnCorrecao = document.querySelector('.btn-correcao');
 
-    // Lógica condicional para o botão de Baixa
+    // Lógica condicional para o botão de Baixa (permanece a mesma)
     let showBaixaButton = false;
     if (currentItemDetails && currentItemDetails.endpic === 'S') {
-        // Se for um endereço de Picking, a permissão BXAPICK é usada
         showBaixaButton = permissions.bxaPick;
     } else {
-        // Senão, a permissão BAIXA padrão é usada
         showBaixaButton = permissions.baixa;
+    }
+
+    // Lógica condicional para o botão de Picking
+    let showPickingButton = false;
+    if (permissions.pick && currentItemDetails && currentItemDetails.endpic !== 'S') {
+        // Só mostra o botão se o usuário tem permissão E o item NÃO está em um local de picking
+        showPickingButton = true;
     }
 
     // Aplica a visibilidade para cada botão
     if (btnBaixar) btnBaixar.style.display = showBaixaButton ? 'flex' : 'none';
     if (btnTransferir) btnTransferir.style.display = permissions.transfer ? 'flex' : 'none';
-    if (btnPicking) btnPicking.style.display = permissions.pick ? 'flex' : 'none';
+    if (btnPicking) btnPicking.style.display = showPickingButton ? 'flex' : 'none';
     if (btnCorrecao) btnCorrecao.style.display = permissions.corre ? 'flex' : 'none';
 
     // Verifica se qualquer botão está visível para mostrar a barra de ações
-    const hasAnyPermission = showBaixaButton || permissions.transfer || permissions.pick || permissions.corre;
+    const hasAnyPermission = showBaixaButton || permissions.transfer || showPickingButton || permissions.corre;
 
     if (actionButtonsContainer) {
         actionButtonsContainer.style.display = hasAnyPermission ? 'flex' : 'none';
@@ -549,12 +557,23 @@ function openBaixaModal() {
 }
 function closeBaixaModal() { document.getElementById('baixa-modal').classList.add('hidden'); }
 function openTransferModal() {
+    console.log("Verificando permissões para abrir modal:", userPermissions);
     if (!currentItemDetails) return;
     document.getElementById('modal-qtd-disponivel-transfer').textContent = currentItemDetails.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-transfer');
     qtdInput.value = currentItemDetails.quantidade;
     qtdInput.max = currentItemDetails.quantidade;
     document.getElementById('modal-enddes-transfer').value = '';
+
+    // Lógica para mostrar/ocultar o checkbox de "Criar Picking"
+    const criarPickingContainer = document.getElementById('criar-picking-container');
+    if (userPermissions && userPermissions.criaPick) {
+        criarPickingContainer.style.display = 'block';
+        document.getElementById('checkbox-criar-picking').checked = false; // Garante que comece desmarcado
+    } else {
+        criarPickingContainer.style.display = 'none';
+    }
+
     document.getElementById('transfer-modal').classList.remove('hidden');
 }
 function closeTransferModal() { document.getElementById('transfer-modal').classList.add('hidden'); }
@@ -608,7 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('profile-overlay').addEventListener('click', closeProfilePanel);
     document.getElementById('btn-history').addEventListener('click', showHistoryPage);
 
-    if (Session.getToken()) {
+    if (Session.getUsername()) { // Verificando pelo username
         switchView('main');
         setupActivityListeners();
         InactivityTimer.start();
