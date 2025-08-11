@@ -144,33 +144,44 @@ async function callSankhyaService(serviceName, requestBody) {
 	const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
 
 	try {
-		const response = await axios.post(
+		const initialResponse = await axios.post(
 			url,
 			{ requestBody },
 			{ headers: { Authorization: `Bearer ${token}` } }
 		);
-		if (response.data.status === '0' && response.data.statusMessage?.includes("Usuário não logado")) {
-			logger.warn('Detectado erro "Usuário não logado". Forçando renovação de token e tentando novamente...');
+
+		const responseData = initialResponse.data;
+
+		// Verifica por duas condições de token inválido na resposta
+		const isTokenExpiredError = responseData.error?.descricao?.includes("Bearer Token inválido ou Expirado");
+		const isNotLoggedInError = responseData.status === '0' && responseData.statusMessage?.includes("Usuário não logado");
+
+		if (isTokenExpiredError || isNotLoggedInError) {
+			logger.warn(`Token de sistema inválido/expirado detectado. Forçando renovação e tentando novamente... (Erro: ${responseData.error?.descricao || responseData.statusMessage})`);
+			token = await getSystemBearerToken(true); // Força a renovação do token
+			const retryResponse = await axios.post(
+				url,
+				{ requestBody },
+				{ headers: { Authorization: `Bearer ${token}` } }
+			);
+			logger.info('Requisição reenviada com sucesso após renovação do token.');
+			return retryResponse.data;
+		}
+
+		return responseData;
+
+	} catch (error) {
+		// Mantém a verificação de erro 401 para outros casos
+		if (error.response && error.response.status === 401) {
+			logger.warn('Token de sistema possivelmente expirado (HTTP 401). Tentando renovar e reenviar a requisição...');
 			token = await getSystemBearerToken(true);
 			const retryResponse = await axios.post(
 				url,
 				{ requestBody },
 				{ headers: { Authorization: `Bearer ${token}` } }
 			);
-			return retryResponse.data;
-		}
-		return response.data;
-	} catch (error) {
-		if (error.response && error.response.status === 401) {
-			logger.warn('Token de sistema possivelmente expirado. Tentando renovar e reenviar a requisição...');
-			token = await getSystemBearerToken(true);
-			const response = await axios.post(
-				url,
-				{ requestBody },
-				{ headers: { Authorization: `Bearer ${token}` } }
-			);
 			logger.info('Requisição reenviada com sucesso após renovação do token.');
-			return response.data;
+			return retryResponse.data;
 		}
 		throw error;
 	}
@@ -248,11 +259,24 @@ app.post('/login', async (req, res) => {
 		if (!deviceIsAuthorized) {
 			finalDeviceToken = crypto.randomBytes(20).toString('hex');
 			const descrDisp = req.headers['user-agent'] ? req.headers['user-agent'].substring(0, 100) : 'Dispositivo Web';
-			await callSankhyaService('DatasetSP.save', {
+
+			// 1. Captura a resposta da operação de salvar
+			const saveResponse = await callSankhyaService('DatasetSP.save', {
 				entityName: 'AD_DISPAUT',
 				fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
 				records: [{ values: { 0: codUsu, 1: finalDeviceToken, 2: sanitizeStringForSql(descrDisp), 3: 'N', 4: new Date().toLocaleDateString('pt-BR') } }],
 			});
+
+			// 2. Verifica se a operação falhou
+			if (saveResponse.status !== '1') {
+				const errorMessage = saveResponse.statusMessage || 'Falha ao tentar registrar o novo dispositivo.';
+				logger.error(`Erro ao salvar dispositivo para CODUSU ${codUsu}: ${errorMessage}`);
+				// 3. Lança um erro para que ele seja tratado pelo bloco catch principal
+				throw new Error(errorMessage);
+			}
+
+			logger.info(`Dispositivo novo ${finalDeviceToken} registrado para CODUSU ${codUsu}. Aguardando autorização.`);
+
 			return res.status(403).json({
 				message: 'Dispositivo novo detectado e registrado. Solicite a um administrador para ativá-lo.',
 				deviceToken: finalDeviceToken,
@@ -362,7 +386,7 @@ apiRoutes.post('/get-permissions', async (req, res) => {
 
 		if (data.responseBody.rows.length === 0) {
 			logger.warn(`Nenhuma permissão encontrada para o usuário ${username}. Retornando acesso negado a todas as funções.`);
-			return res.json({ baixa: false, transfer: false, pick: false, corre: false, bxaPick : false});
+			return res.json({ baixa: false, transfer: false, pick: false, corre: false, bxaPick: false });
 		}
 
 		const perms = data.responseBody.rows[0];
