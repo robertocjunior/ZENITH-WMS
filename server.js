@@ -1,6 +1,8 @@
 // server.js
 require('dotenv').config();
 
+const { validate, loginSchema, searchItemsSchema, itemDetailsSchema, pickingLocationsSchema, transactionSchema } = require('./validationSchemas.js');
+
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
@@ -202,7 +204,7 @@ const authenticateToken = (req, res, next) => {
 };
 
 
-app.post('/login', async (req, res) => {
+app.post('/login', validate(loginSchema), async (req, res) => {
 	const { username, password, deviceToken: clientDeviceToken } = req.body;
 
 	const deviceIdentifier = clientDeviceToken || req.ip;
@@ -409,7 +411,7 @@ apiRoutes.post('/get-permissions', async (req, res) => {
 });
 
 
-apiRoutes.post('/search-items', async (req, res) => {
+apiRoutes.post('/search-items', validate(searchItemsSchema), async (req, res) => {
 	try {
 		const codArm = sanitizeNumber(req.body.codArm);
 		const filtro = req.body.filtro;
@@ -464,7 +466,7 @@ apiRoutes.post('/search-items', async (req, res) => {
 	}
 });
 
-apiRoutes.post('/get-item-details', async (req, res) => {
+apiRoutes.post('/get-item-details', validate(itemDetailsSchema), async (req, res) => {
 	try {
 		const codArm = sanitizeNumber(req.body.codArm);
 		const sequencia = sanitizeNumber(req.body.sequencia);
@@ -488,7 +490,7 @@ apiRoutes.post('/get-item-details', async (req, res) => {
 	}
 });
 
-apiRoutes.post('/get-picking-locations', async (req, res) => {
+apiRoutes.post('/get-picking-locations', validate(pickingLocationsSchema), async (req, res) => {
 	try {
 		const codarm = sanitizeNumber(req.body.codarm);
 		const codprod = sanitizeNumber(req.body.codprod);
@@ -579,7 +581,7 @@ apiRoutes.post('/get-history', async (req, res) => {
 	}
 });
 
-apiRoutes.post('/execute-transaction', async (req, res) => {
+apiRoutes.post('/execute-transaction', validate(transactionSchema), async (req, res) => {
 	const { type, payload } = req.body;
 	const { username, codusu } = req.userSession;
 	logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);

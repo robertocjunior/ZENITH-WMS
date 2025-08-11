@@ -372,7 +372,8 @@ async function openPickingModal() {
 function renderizarCards(rows) {
     const resultsContainer = document.getElementById('results-container');
     const emptyState = document.getElementById('empty-state');
-    resultsContainer.innerHTML = '';
+    resultsContainer.innerHTML = ''; // Limpeza segura do container
+
     if (!rows || rows.length === 0) {
         emptyState.classList.remove('hidden');
         emptyState.querySelector('.material-icons').textContent = 'search_off';
@@ -380,6 +381,7 @@ function renderizarCards(rows) {
         document.getElementById('empty-state-subtext').textContent = "Tente uma busca com termos diferentes.";
         return;
     }
+
     emptyState.classList.add('hidden');
     rows.forEach(row => {
         const [sequencia, rua, predio, apto, codprod, descrprod, marca, datval, qtd, endpic, qtdCompleta, derivacao] = row;
@@ -391,7 +393,26 @@ function renderizarCards(rows) {
         if (marca) displayDesc += ` - ${marca}`;
         if (derivacao) displayDesc += ` - ${derivacao}`;
 
-        card.innerHTML = `<div class="card-header"><p>Seq: <span>${sequencia}</span></p><p>Rua: <span>${rua}</span></p><p>Prédio: <span>${predio}</span></p></div><div class="card-body"><p class="product-desc">${displayDesc}</p></div><div class="card-footer"><span class="product-code">Cód: ${codprod}</span><span class="product-quantity">Qtd: <strong>${qtdCompleta}</strong></span><span class="product-validity">Val: ${formatarData(datval)}</span></div>`;
+        // Construção segura dos elementos
+        const cardHeader = document.createElement('div');
+        cardHeader.className = 'card-header';
+        cardHeader.innerHTML = `<p>Seq: <span>${sequencia}</span></p><p>Rua: <span>${rua}</span></p><p>Prédio: <span>${predio}</span></p>`;
+
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+        const productDescP = document.createElement('p');
+        productDescP.className = 'product-desc';
+        productDescP.textContent = displayDesc; // Uso de .textContent para segurança
+        cardBody.appendChild(productDescP);
+
+        const cardFooter = document.createElement('div');
+        cardFooter.className = 'card-footer';
+        cardFooter.innerHTML = `<span class="product-code">Cód: ${codprod}</span><span class="product-quantity">Qtd: <strong>${qtdCompleta}</strong></span><span class="product-validity">Val: ${formatarData(datval)}</span>`;
+        
+        card.appendChild(cardHeader);
+        card.appendChild(cardBody);
+        card.appendChild(cardFooter);
+
         card.addEventListener('click', () => fetchAndShowDetails(sequencia));
         resultsContainer.appendChild(card);
     });
@@ -400,84 +421,137 @@ function populateDetails(detailsArray) {
     const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta, derivacao] = detailsArray;
     currentItemDetails = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta, derivacao };
     const detailsContent = document.getElementById('details-content');
-    const pickingClass = endpic === 'S' ? 'picking-area' : '';
+    detailsContent.innerHTML = ''; // Limpeza segura
 
+    const pickingClass = endpic === 'S' ? 'picking-area' : '';
     let mainDesc = descrprod || 'Produto sem descrição';
     if (marca) mainDesc += ` - ${marca}`;
 
-    detailsContent.innerHTML = `<div class="detail-hero ${pickingClass}"><h3 class="product-desc">${mainDesc}</h3><div class="product-code">Cód. Prod.: ${codprod}</div></div><div class="details-section"><h4 class="details-section-title">Informações</h4><div class="details-grid"><div class="detail-item"><div class="label">Derivação</div><div class="value">${derivacao || 'N/A'}</div></div><div class="detail-item"><div class="label">Validade</div><div class="value">${formatarData(datval)}</div></div><div class="detail-item"><div class="label">Quantidade</div><div class="value">${qtdCompleta || 0}</div></div></div></div><div class="details-section"><h4 class="details-section-title">Localização</h4><div class="details-grid"><div class="detail-item"><div class="label">Armazém</div><div class="value">${codarm}</div></div><div class="detail-item"><div class="label">Rua</div><div class="value">${rua}</div></div><div class="detail-item"><div class="label">Prédio</div><div class="value">${predio}</div></div><div class="detail-item"><div class="label">Sequência</div><div class="value">${sequencia}</div></div><div class="detail-item"><div class="label">Apto</div><div class="value">${apto}</div></div></div></div>`;
+    // Hero Section
+    const detailHero = document.createElement('div');
+    detailHero.className = `detail-hero ${pickingClass}`;
+    const heroDesc = document.createElement('h3');
+    heroDesc.className = 'product-desc';
+    heroDesc.textContent = mainDesc; // Uso de .textContent
+    const heroCode = document.createElement('div');
+    heroCode.className = 'product-code';
+    heroCode.textContent = `Cód. Prod.: ${codprod}`; // Uso de .textContent
+    detailHero.append(heroDesc, heroCode);
+
+    detailsContent.appendChild(detailHero);
+
+    // Função auxiliar para criar seções
+    const createDetailSection = (title, items) => {
+        const section = document.createElement('div');
+        section.className = 'details-section';
+        const sectionTitle = document.createElement('h4');
+        sectionTitle.className = 'details-section-title';
+        sectionTitle.textContent = title;
+        const grid = document.createElement('div');
+        grid.className = 'details-grid';
+        items.forEach(({ label, value }) => {
+            const item = document.createElement('div');
+            item.className = 'detail-item';
+            const itemLabel = document.createElement('div');
+            itemLabel.className = 'label';
+            itemLabel.textContent = label;
+            const itemValue = document.createElement('div');
+            itemValue.className = 'value';
+            itemValue.textContent = value; // Uso de .textContent
+            item.append(itemLabel, itemValue);
+            grid.appendChild(item);
+        });
+        section.append(sectionTitle, grid);
+        return section;
+    };
+
+    // Seção de Informações
+    const infoItems = [
+        { label: 'Derivação', value: derivacao || 'N/A' },
+        { label: 'Validade', value: formatarData(datval) },
+        { label: 'Quantidade', value: qtdCompleta || 0 },
+    ];
+    detailsContent.appendChild(createDetailSection('Informações', infoItems));
+
+    // Seção de Localização
+    const locItems = [
+        { label: 'Armazém', value: codarm },
+        { label: 'Rua', value: rua },
+        { label: 'Prédio', value: predio },
+        { label: 'Sequência', value: sequencia },
+        { label: 'Apto', value: apto },
+    ];
+    detailsContent.appendChild(createDetailSection('Localização', locItems));
 }
 
 function renderHistoryCards(rows) {
     const container = document.getElementById('history-container');
     const emptyState = document.getElementById('history-empty-state');
-    container.innerHTML = '';
+    container.innerHTML = ''; // Limpeza segura
     if (!rows || rows.length === 0) {
         emptyState.classList.remove('hidden');
         return;
     }
     emptyState.classList.add('hidden');
 
-    // Agrupa as linhas pelo ID da Operação
     const groupedOperations = rows.reduce((acc, row) => {
         const opId = row[13];
-        if (!acc[opId]) {
-            acc[opId] = [];
-        }
+        if (!acc[opId]) acc[opId] = [];
         acc[opId].push(row);
         return acc;
     }, {});
 
-    // Itera sobre os grupos para criar os cards
     for (const group of Object.values(groupedOperations)) {
         const firstRow = group[0];
-        const [tipo, dataOrdem, hora, , , , , codprod, descrprod, marca, derivacao, quantAnt, qtdAtual, idOperacao] = firstRow;
+        const [tipo, , hora, , , , , codprod, descrprod, marca, derivacao, quantAnt, qtdAtual, idOperacao] = firstRow;
 
         const card = document.createElement('div');
         card.className = 'history-card';
-        if (tipo === 'CORRECAO') {
-            card.classList.add('correction-type');
-        }
+        if (tipo === 'CORRECAO') card.classList.add('correction-type');
 
-        // Informações do produto (comum a todas as ações do grupo)
+        const headerHtml = `<div class="card-header"><p>${tipo === 'CORRECAO' ? 'Correção' : 'Operação'}: <span>${idOperacao}</span></p><p>${hora}</p></div>`;
+        card.innerHTML = headerHtml;
+
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+        
         let productDisplay = descrprod || 'Produto';
         if (marca) productDisplay += ` - ${marca}`;
         if (derivacao) productDisplay += ` - ${derivacao}`;
-        let productHtml = descrprod ? `<div class="product-info">${productDisplay}<span class="product-code">Cód: ${codprod}</span></div>` : '';
-
-        let actionsHtml = '';
-        let opTypeLabel = '';
-
-        if (tipo === 'CORRECAO') {
-            opTypeLabel = 'Correção';
-            // Monta o card de correção como antes
-            const [, , , codarm, seqend] = firstRow;
-            actionsHtml = `
-                <div class="history-location">
-                    <div class="location"><div class="label">Local da Correção</div><div>${codarm} &rarr; ${seqend}</div></div>
-                </div>
-                <div class="history-movement">
-                    <div class="origin"><div class="label">Qtd. Anterior</div><div>${quantAnt}</div></div>
-                    <span class="material-icons arrow">trending_flat</span>
-                    <div class="destination"><div class="label">Qtd. Corrigida</div><div>${qtdAtual}</div></div>
-                </div>`;
-        } else { // tipo 'MOV'
-            opTypeLabel = 'Operação';
-            // Itera sobre CADA ação dentro do grupo
-            group.forEach(actionRow => {
-                const [, , , codarm, seqend, armdes, enddes] = actionRow;
-                if (armdes && enddes) {
-                    actionsHtml += `<div class="history-movement"><div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div></div>`;
-                } else {
-                    actionsHtml += `<div class="history-location"><div class="location"><div class="label">Local da Baixa</div><div>${codarm} &rarr; ${seqend}</div></div></div>`;
-                }
-            });
+        
+        if (descrprod) {
+            const productInfo = document.createElement('div');
+            productInfo.className = 'product-info';
+            productInfo.innerHTML = `${productDisplay}<span class="product-code">Cód: ${codprod}</span>`;
+            cardBody.appendChild(productInfo);
         }
 
-        const headerHtml = `<div class="card-header"><p>${opTypeLabel}: <span>${idOperacao}</span></p><p>${hora}</p></div>`;
-        const bodyHtml = `<div class="card-body">${productHtml}${actionsHtml}</div>`;
+        // Renderização segura das ações
+        if (tipo === 'CORRECAO') {
+            const [, , , codarm, seqend] = firstRow;
+            const locationDiv = document.createElement('div');
+            locationDiv.className = 'history-location';
+            locationDiv.innerHTML = `<div class="location"><div class="label">Local da Correção</div><div>${codarm} &rarr; ${seqend}</div></div>`;
 
-        card.innerHTML = headerHtml + bodyHtml;
+            const movementDiv = document.createElement('div');
+            movementDiv.className = 'history-movement';
+            movementDiv.innerHTML = `<div class="origin"><div class="label">Qtd. Anterior</div><div>${quantAnt}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Qtd. Corrigida</div><div>${qtdAtual}</div></div>`;
+            cardBody.append(locationDiv, movementDiv);
+        } else { // 'MOV'
+            group.forEach(actionRow => {
+                const [, , , codarm, seqend, armdes, enddes] = actionRow;
+                const actionDiv = document.createElement('div');
+                if (armdes && enddes) {
+                    actionDiv.className = 'history-movement';
+                    actionDiv.innerHTML = `<div class="origin"><div class="label">Origem</div><div>${codarm} &rarr; ${seqend}</div></div><span class="material-icons arrow">trending_flat</span><div class="destination"><div class="label">Destino</div><div>${armdes} &rarr; ${enddes}</div></div>`;
+                } else {
+                    actionDiv.className = 'history-location';
+                    actionDiv.innerHTML = `<div class="location"><div class="label">Local da Baixa</div><div>${codarm} &rarr; ${seqend}</div></div>`;
+                }
+                cardBody.appendChild(actionDiv);
+            });
+        }
+        card.appendChild(cardBody);
         container.appendChild(card);
     }
 }
