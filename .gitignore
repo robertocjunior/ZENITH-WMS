@@ -78,6 +78,7 @@ web_modules/
 .env.test.local
 .env.production.local
 .env.local
+.env.*.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -132,21 +133,15 @@ assets
 .yarn/install-state.gz
 .pnp.*
 
-# Arquivo de dependências do Node.js
-node_modules
-
-# Arquivo com as credenciais secretas
-.env
-*.env
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Ignorar arquivos de chaves de segurança
+# Generated key files
 rsa_private_key.pem
 rsa_public_key.pem
 
-# Ignora qualquer pasta chamada 'assets' no projeto
-assets/
+# Sankhya metadata zip files
+docs/Telas Sankhya/*.zip
+
+# Vite build output
+dist/
+
+# Environment variables
+prod.env
