@@ -146,26 +146,22 @@ async function callSankhyaService(serviceName, requestBody) {
 	const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
 
 	try {
-		const initialResponse = await axios.post(
+		// Primeira tentativa de chamada da API
+		const response = await axios.post(
 			url,
 			{ requestBody },
 			{ headers: { Authorization: `Bearer ${token}` } }
 		);
 
-		const responseData = initialResponse.data;
-
-		// Verifica por duas condições de token inválido na resposta
+		const responseData = response.data;
+		// Verifica se a resposta, mesmo com sucesso (HTTP 200), contém um erro lógico de token
 		const isTokenExpiredError = responseData.error?.descricao?.includes("Bearer Token inválido ou Expirado");
 		const isNotLoggedInError = responseData.status === '0' && responseData.statusMessage?.includes("Usuário não logado");
 
 		if (isTokenExpiredError || isNotLoggedInError) {
-			logger.warn(`Token de sistema inválido/expirado detectado. Forçando renovação e tentando novamente... (Erro: ${responseData.error?.descricao || responseData.statusMessage})`);
-			token = await getSystemBearerToken(true); // Força a renovação do token
-			const retryResponse = await axios.post(
-				url,
-				{ requestBody },
-				{ headers: { Authorization: `Bearer ${token}` } }
-			);
+			logger.warn(`Token de sistema inválido (em resposta OK). Forçando renovação...`);
+			token = await getSystemBearerToken(true); // Força a renovação
+			const retryResponse = await axios.post(url, { requestBody }, { headers: { Authorization: `Bearer ${token}` } });
 			logger.info('Requisição reenviada com sucesso após renovação do token.');
 			return retryResponse.data;
 		}
@@ -173,18 +169,28 @@ async function callSankhyaService(serviceName, requestBody) {
 		return responseData;
 
 	} catch (error) {
-		// Mantém a verificação de erro 401 para outros casos
-		if (error.response && error.response.status === 401) {
-			logger.warn('Token de sistema possivelmente expirado (HTTP 401). Tentando renovar e reenviar a requisição...');
-			token = await getSystemBearerToken(true);
-			const retryResponse = await axios.post(
-				url,
-				{ requestBody },
-				{ headers: { Authorization: `Bearer ${token}` } }
-			);
-			logger.info('Requisição reenviada com sucesso após renovação do token.');
-			return retryResponse.data;
+		// Se a primeira tentativa falhou com um erro HTTP (ex: 400, 401, 403)
+		// Verificamos se o corpo do erro contém a mensagem de token expirado
+		if (error.response && error.response.data) {
+			const errorData = error.response.data;
+			const isTokenExpiredError = errorData.error?.descricao?.includes("Bearer Token inválido ou Expirado");
+			const isNotLoggedInError = errorData.status === '0' && errorData.statusMessage?.includes("Usuário não logado");
+			
+			if (isTokenExpiredError || isNotLoggedInError) {
+				logger.warn(`Token de sistema inválido (em resposta de erro HTTP ${error.response.status}). Forçando renovação...`);
+				token = await getSystemBearerToken(true); // Força a renovação
+				try {
+					// Tenta a chamada novamente com o novo token
+					const retryResponse = await axios.post(url, { requestBody }, { headers: { Authorization: `Bearer ${token}` } });
+					logger.info('Requisição reenviada com sucesso após renovação do token.');
+					return retryResponse.data;
+				} catch (retryError) {
+					logger.error(`Falha ao reenviar a requisição após renovar o token: ${retryError.message}`);
+					throw retryError; // Lança o erro da segunda tentativa
+				}
+			}
 		}
+		// Se não for um erro de token conhecido, lança o erro original
 		throw error;
 	}
 }
@@ -413,36 +419,28 @@ apiRoutes.post('/get-permissions', async (req, res) => {
 
 apiRoutes.post('/search-items', validate(searchItemsSchema), async (req, res) => {
 	try {
-		const codArm = sanitizeNumber(req.body.codArm);
-		const filtro = req.body.filtro;
+		// A validação do Zod já garante que os tipos estão corretos
+		const { codArm, filtro } = req.body;
+		logger.http(`Usuário ${req.userSession.username} buscou por '${filtro || 'todos'}' no armazém ${codArm}.`);
 
-		logger.http(
-			`Usuário ${req.userSession.username} buscou por '${filtro || 'todos'
-			}' no armazém ${codArm}.`
-		);
-
-		let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${codArm}`;
+		// Revertendo para a construção manual da string SQL com sanitização
+		const sanitizedCodArm = sanitizeNumber(codArm);
+		let sqlFinal = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizedCodArm}`;
 		let orderByClause = '';
+
 		if (filtro) {
 			const filtroLimpo = filtro.trim();
 			if (/^\d+$/.test(filtroLimpo)) {
 				const filtroNum = sanitizeNumber(filtroLimpo);
-				sqlFinal += ` AND (ENDE.SEQEND LIKE '${sanitizeStringForSql(
-					filtroLimpo
-				)}%' OR ENDE.CODPROD = ${filtroNum} OR ENDE.CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroNum} AND CODARM = ${codArm} AND ROWNUM = 1))`;
+				sqlFinal += ` AND (ENDE.SEQEND LIKE '${sanitizeStringForSql(filtroLimpo)}%' OR ENDE.CODPROD = ${filtroNum} OR ENDE.CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroNum} AND CODARM = ${sanitizedCodArm} AND ROWNUM = 1))`;
 				orderByClause = ` ORDER BY CASE WHEN ENDE.SEQEND = ${filtroNum} THEN 0 ELSE 1 END, ENDE.ENDPIC DESC, ENDE.DATVAL ASC`;
 			} else {
-				const removerAcentos = (texto) =>
-					texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-				const palavrasChave = removerAcentos(filtroLimpo)
-					.split(' ')
-					.filter((p) => p.length > 0);
+				const removerAcentos = (texto) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+				const palavrasChave = removerAcentos(filtroLimpo).split(' ').filter((p) => p.length > 0);
 				const condicoes = palavrasChave.map((palavra) => {
 					const palavraUpper = sanitizeStringForSql(palavra.toUpperCase());
-					const cleanDescrprod =
-						"TRANSLATE(UPPER(PRO.DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
-					const cleanMarca =
-						"TRANSLATE(UPPER(PRO.MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
+					const cleanDescrprod = "TRANSLATE(UPPER(PRO.DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
+					const cleanMarca = "TRANSLATE(UPPER(PRO.MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')";
 					return `(${cleanDescrprod} LIKE '%${palavraUpper}%' OR ${cleanMarca} LIKE '%${palavraUpper}%')`;
 				});
 				if (condicoes.length > 0) sqlFinal += ` AND ${condicoes.join(' AND ')}`;
@@ -451,17 +449,19 @@ apiRoutes.post('/search-items', validate(searchItemsSchema), async (req, res) =>
 		} else {
 			orderByClause = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
 		}
+
 		sqlFinal += orderByClause;
 
+		// A chamada volta a enviar apenas o SQL, sem o objeto 'params'
 		const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
 			sql: sqlFinal,
 		});
+
 		if (data.status !== '1') throw new Error(data.statusMessage);
 		res.json(data.responseBody.rows);
+
 	} catch (error) {
-		logger.error(
-			`Erro em /search-items para o usuário ${req.userSession.username}: ${error.message}`
-		);
+		logger.error(`Erro em /search-items para o usuário ${req.userSession.username}: ${error.message}`);
 		res.status(500).json({ message: 'Ocorreu um erro ao buscar os itens.' });
 	}
 });
