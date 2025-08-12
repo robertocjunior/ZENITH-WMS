@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS Zenith</title>
+
+    <meta name="theme-color" content="#00529B">
+    <link rel="icon" href="/icons/icon32x32.png" type="image/png" sizes="32x32">
+    <link rel="icon" href="/icons/icon16x16.png" type="image/png" sizes="16x16">
+    <link rel="apple-touch-icon" href="/icons/icon192x192.png">
+
+    <link rel="manifest" href="/manifest.json">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/main-BA4hKs74.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/main-DLjacrRa.css">
+</head>
+
+<body>
+    <div id="login-page" class="page active">
+        <div class="login-container">
+            <div class="logo-container">
+                <img src="/icons/icon512x512transparent.png" alt="Logo Zenith" class="logo-icon">
+                <img src="/icons/name-transparent.png" alt="Zenith" class="logo-name">
+            </div>
+            <p>Faça login com seu usuário e senha do Sankhya.</p>
+            <div class="modal-input-group">
+                <label for="login-username">Usuário</label>
+                <input type="text" id="login-username" autocomplete="username">
+            </div>
+            <div class="modal-input-group">
+                <label for="login-password">Senha</label>
+                <input type="password" id="login-password" autocomplete="current-password">
+            </div>
+            <button id="btn-login" class="btn-action">Entrar</button>
+        </div>
+    </div>
+
+    <div id="app-container" class="hidden">
+        <div id="main-page" class="page">
+            <header class="app-header">
+                <div class="header-main-line">
+                    <div class="header-left-items">
+                        <div class="warehouse-selector">
+                            <label for="armazem-select">Armazém</label>
+                            <select id="armazem-select">
+                                <option value="">Carregando...</option>
+                            </select>
+                        </div>
+                        <button id="btn-open-profile" class="profile-button">
+                            <span class="material-icons">account_circle</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="search-bar">
+                    <div class="input-wrapper">
+                        <span class="material-icons">search</span>
+                        <input type="text" id="filtro-sequencia" placeholder="Buscar..." autocomplete="off">
+                    </div>
+                    <button id="btn-consultar">Buscar</button>
+                </div>
+            </header>
+            <main id="results-container" class="results-container"></main>
+
+            <div id="empty-state" class="empty-state">
+                <span class="material-icons">warehouse</span>
+                <p id="empty-state-message">Nenhum resultado para exibir</p>
+                <span id="empty-state-subtext">Selecione um armazém para começar</span>
+            </div>
+        </div>
+
+        <div id="details-page" class="page">
+            <header class="details-header">
+                <button id="btn-voltar"><span class="material-icons">arrow_back</span> Voltar</button>
+                <h2 id="details-title">Detalhes do Endereço</h2>
+            </header>
+            <div id="details-content" class="details-content"></div>
+            <div class="action-buttons">
+                <button class="btn-action btn-baixar">Baixar</button>
+                <button class="btn-action btn-transferir">Transferir</button>
+                <button class="btn-action btn-picking">Picking</button>
+                <button class="btn-action btn-correcao">Correção</button>
+            </div>
+        </div>
+
+        <div id="history-page" class="page">
+            <header class="details-header">
+                <button id="btn-history-voltar"><span class="material-icons">arrow_back</span> Voltar</button>
+                <h2>Histórico de Hoje</h2>
+            </header>
+            <main id="history-container" class="results-container"></main>
+            <div id="history-empty-state" class="empty-state hidden">
+                <span class="material-icons">history</span>
+                <p>Nenhuma operação hoje</p>
+                <span>Nenhum registro de baixa ou transferência foi encontrado para você na data de hoje.</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="profile-overlay" class="profile-overlay hidden"></div>
+    <div id="profile-panel" class="profile-panel">
+        <div class="profile-panel-header">
+            <div class="profile-info">
+                <span class="material-icons">account_circle</span>
+                <span id="profile-user-info"></span>
+            </div>
+            <button id="btn-close-profile" class="close-panel-btn"><span class="material-icons">close</span></button>
+        </div>
+        <div class="profile-panel-body">
+            <button class="panel-button" id="btn-history">
+                <span class="material-icons">history</span>
+                <span>Histórico de Operações</span>
+            </button>
+        </div>
+        <div class="profile-panel-footer">
+            <button class="panel-button logout-button" id="btn-logout">
+                <span class="material-icons">logout</span>
+                <span>Sair</span>
+            </button>
+        </div>
+    </div>
+    <div id="baixa-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Dar Baixa no Produto</h3>
+            <p>Disponível: <strong id="modal-qtd-disponivel"></strong></p>
+            <div class="modal-input-group">
+                <label for="modal-qtd-baixa">Quantidade a baixar:</label>
+                <input type="number" id="modal-qtd-baixa" placeholder="0" min="1" step="1" autocomplete="off">
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cancelar-baixa" class="btn-modal btn-cancel">Cancelar</button>
+                <button id="btn-confirmar-baixa" class="btn-modal btn-confirm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+    <div id="transfer-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Transferir Produto</h3>
+            <p>Disponível: <strong id="modal-qtd-disponivel-transfer"></strong></p>
+            <div class="modal-input-group">
+                <label for="modal-qtd-transfer">Quantidade a transferir:</label>
+                <input type="number" id="modal-qtd-transfer" placeholder="0" min="1" step="1" autocomplete="off">
+            </div>
+            <div class="modal-input-group">
+                <label for="modal-armdes-transfer">Armazém de Destino:</label>
+                <select id="modal-armdes-transfer"></select>
+            </div>
+            <div class="modal-input-group">
+                <label for="modal-enddes-transfer">Endereço de Destino:</label>
+                <input type="text" id="modal-enddes-transfer" placeholder="Digite o endereço de destino"
+                    autocomplete="off">
+            </div>
+            <div id="criar-picking-container" class="modal-input-group" style="display: none;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="checkbox-criar-picking">
+                    <span>Marcar destino como Picking</span>
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cancelar-transfer" class="btn-modal btn-cancel">Cancelar</button>
+                <button id="btn-confirmar-transfer" class="btn-modal btn-confirm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+    <div id="picking-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Mover para Picking</h3>
+            <p>Disponível: <strong id="modal-qtd-disponivel-picking"></strong></p>
+            <div class="modal-input-group">
+                <label for="modal-qtd-picking">Quantidade a mover:</label>
+                <input type="number" id="modal-qtd-picking" placeholder="0" min="1" step="1" autocomplete="off">
+            </div>
+            <div class="modal-input-group">
+                <label for="modal-seqend-picking">Destino de Picking:</label>
+                <select id="modal-seqend-picking">
+                    <option value="">Carregando locais...</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cancelar-picking" class="btn-modal btn-cancel">Cancelar</button>
+                <button id="btn-confirmar-picking" class="btn-modal btn-confirm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+    <div id="correcao-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3>Corrigir Quantidade</h3>
+            <p>Quantidade Atual: <strong id="modal-qtd-disponivel-correcao"></strong></p>
+            <div class="modal-input-group">
+                <label for="modal-qtd-correcao">Nova Quantidade:</label>
+                <input type="number" id="modal-qtd-correcao" placeholder="0" min="0" step="1" autocomplete="off">
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cancelar-correcao" class="btn-modal btn-cancel">Cancelar</button>
+                <button id="btn-confirmar-correcao" class="btn-modal btn-confirm">Confirmar</button>
+            </div>
+        </div>
+    </div>
+    <div id="loading" class="loading-indicator hidden">
+        <div class="spinner"></div>
+        <p>Carregando...</p>
+    </div>
+    <div id="confirm-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 id="modal-confirm-title">Aviso</h3>
+            <div id="modal-confirm-message"></div>
+            <div class="modal-actions">
+                <button id="btn-close-confirm" class="btn-modal btn-confirm">OK</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>
