@@ -3,84 +3,98 @@ const axios = require('axios');
 const logger = require('../../../logger');
 
 const SANKHYA_API_URL = process.env.SANKHYA_API_URL;
+let systemBearerToken = null;
+
+async function getSystemBearerToken(forceRefresh = false) {
+    if (systemBearerToken && !forceRefresh) return systemBearerToken;
+    try {
+        logger.http('Autenticando o sistema para obter/renovar Bearer Token...');
+        const response = await axios.post(
+            `${SANKHYA_API_URL}/login`, {},
+            { headers: {
+                appkey: process.env.SANKHYA_APPKEY,
+                username: process.env.SANKHYA_USERNAME,
+                password: process.env.SANKHYA_PASSWORD,
+                token: process.env.SANKHYA_TOKEN,
+            }}
+        );
+        systemBearerToken = response.data.bearerToken;
+        if (!systemBearerToken) throw new Error('Falha ao obter Bearer Token do sistema.');
+        logger.info('Token de sistema obtido/renovado com sucesso.');
+        return systemBearerToken;
+    } catch (error) {
+        logger.error(`ERRO CRÍTICO ao obter Bearer Token: ${error.message}`);
+        systemBearerToken = null;
+        throw new Error('Falha na autenticação do servidor proxy.');
+    }
+}
 
 /**
- * Esta é a função principal para fazer chamadas à API Sankhya
- * usando as credenciais de sistema do arquivo .env.
- *
- * ELA AGORA REPLICA A LÓGICA DO SEU server.js ORIGINAL:
- * 1. Faz um novo login de sistema a CADA chamada.
- * 2. Pega um bearer token novo.
- * 3. Executa o serviço solicitado com o token novo.
- * 4. Não usa cache de token.
+ * Método "call" - Para TRANSAÇÕES (salvar, validar senha, etc.).
+ * Usa o token em cache e o método POST.
  */
-const callAsSystem = async (serviceName, requestBody) => {
-    logger.http(`Executando '${serviceName}' como usuário de sistema...`);
+async function call(serviceName, requestBody) {
+    let token = await getSystemBearerToken();
+    const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
     try {
-        // Passo 1: Fazer um novo login de sistema para obter um token fresco.
-        const loginResponse = await axios.post(
-            `${SANKHYA_API_URL}/login`,
-            {}, // Corpo vazio
-            {
-                headers: {
-                    appkey: process.env.SANKHYA_APPKEY,
-                    username: process.env.SANKHYA_USERNAME,
-                    password: process.env.SANKHYA_PASSWORD,
-                    token: process.env.SANKHYA_TOKEN,
-                },
-            }
-        );
-
-        const freshSystemToken = loginResponse.data.bearerToken;
-        if (!freshSystemToken) {
-            throw new Error('Falha ao obter token de sistema para a consulta na API Sankhya.');
+        const response = await axios.post(url, { requestBody }, { headers: { Authorization: `Bearer ${token}` } });
+        const responseData = response.data;
+        const isTokenError = responseData.error?.descricao?.includes("Bearer Token inválido ou Expirado") || (responseData.status === '0' && responseData.statusMessage?.includes("Usuário não logado"));
+        if (isTokenError) {
+             throw { isTokenError: true };
         }
+        return responseData;
+    } catch (error) {
+        const isAuthError = error.isTokenError || error.response?.status === 401 || error.response?.status === 403;
+        if (isAuthError) {
+            logger.warn(`Token de sistema inválido para '${serviceName}'. Forçando renovação...`);
+            token = await getSystemBearerToken(true);
+            const retryResponse = await axios.post(url, { requestBody }, { headers: { Authorization: `Bearer ${token}` } });
+            logger.info('Requisição reenviada com sucesso após renovação do token.');
+            return retryResponse.data;
+        }
+        const errorMessage = error.response?.data?.statusMessage || error.message;
+        throw new Error(errorMessage);
+    }
+}
 
-        // Passo 2: Usar o token fresco para fazer a chamada ao serviço desejado.
+/**
+ * Método "callAsSystem" - Para CONSULTAS (SELECT / DbExplorerSP.executeQuery).
+ * Sempre faz um novo login e usa o método GET, alinhado com o teste do Postman.
+ */
+async function callAsSystem(serviceName, requestBody) {
+    logger.http(`Executando '${serviceName}' com um token de sistema novo (via GET)...`);
+    try {
+        const loginResponse = await axios.post(
+            `${SANKHYA_API_URL}/login`, {},
+            { headers: {
+                appkey: process.env.SANKHYA_APPKEY,
+                username: process.env.SANKHYA_USERNAME,
+                password: process.env.SANKHYA_PASSWORD,
+                token: process.env.SANKHYA_TOKEN,
+            }}
+        );
+        const freshSystemToken = loginResponse.data.bearerToken;
+        if (!freshSystemToken) throw new Error('Falha ao obter token de sistema para a consulta.');
+
         const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
         
-        // Usando POST, que é o método mais comum e robusto para o gateway de serviços Sankhya.
-        const serviceResponse = await axios.post(
-            url,
-            { requestBody }, // O corpo da requisição do serviço vai aqui
-            { headers: { Authorization: `Bearer ${freshSystemToken}` } }
-        );
+        // MUDANÇA PRINCIPAL: Usando GET para alinhar com o teste do Postman
+        const serviceResponse = await axios.get(url, {
+            headers: { Authorization: `Bearer ${freshSystemToken}` },
+            data: { requestBody }
+        });
 
         return serviceResponse.data;
-
     } catch (error) {
-        // Captura e formata o erro para ser mais claro
-        const errorMessage = error.response?.data?.statusMessage || error.message || `Falha ao executar ${serviceName} como sistema.`;
+        const errorMessage = error.response?.data?.statusMessage || `Falha ao executar ${serviceName} como sistema.`;
         logger.error(`Erro em callAsSystem: ${errorMessage}`);
         throw new Error(errorMessage);
     }
-};
-
-
-// Esta função agora será apenas um "apelido" para callAsSystem, mantendo a consistência.
-const call = async (serviceName, requestBody) => {
-    return callAsSystem(serviceName, requestBody);
-};
-
-
-// Função chamada apenas uma vez no início do servidor para garantir que as credenciais do .env são válidas.
-const initializeSankhyaService = async () => {
-    try {
-        logger.http('Verificando a conexão inicial com a API Sankhya...');
-        // Tenta fazer uma chamada simples para validar a conexão.
-        await callAsSystem('MobileLoginSP.login', { NOMUSU: { $: 'TESTE_CONEXAO' } });
-        logger.info('Conexão inicial com Sankhya verificada com sucesso.');
-    } catch (error) {
-        // Ignora erros específicos de "usuário não encontrado", pois o objetivo é apenas validar a comunicação.
-        if (!error.message.includes('Usuário não encontrado')) {
-            throw error; // Lança outros erros (ex: de conexão, credenciais inválidas)
-        }
-        logger.info('Conexão inicial com Sankhya verificada com sucesso (ignorando erro de usuário de teste).');
-    }
-};
+}
 
 module.exports = {
-    initializeSankhyaService,
+    initializeSankhyaService: getSystemBearerToken,
     call,
     callAsSystem,
 };

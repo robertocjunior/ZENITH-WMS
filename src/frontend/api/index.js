@@ -32,32 +32,40 @@ async function authenticatedFetch(endpoint, body = {}) {
 // --- Funções de API Específicas ---
 
 export async function login(username, password) {
-    const deviceToken = localStorage.getItem('deviceToken');
-    // Adicionado o prefixo /api para corresponder à rota do backend
-    const response = await fetch('/api/login', { 
+    // 1. Constrói a chave de armazenamento específica para o usuário.
+    const userTokenKey = `deviceToken_${username.toUpperCase()}`;
+    
+    // 2. Procura por um token que já pertença a este usuário neste navegador.
+    const deviceToken = localStorage.getItem(userTokenKey);
+
+    const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, deviceToken })
     });
+    
     const data = await response.json();
+
     if (!response.ok) {
+        // Se a resposta contiver um novo token (após o registro do dispositivo)...
         if (data.deviceToken) {
-            localStorage.setItem('deviceToken', data.deviceToken);
+            // 3. Salva o novo token usando a chave específica do usuário.
+            localStorage.setItem(userTokenKey, data.deviceToken);
         }
         throw new Error(data.message || 'Erro desconhecido no login.');
     }
+    
+    // Se o login for bem-sucedido e a resposta contiver um token...
     if (data.deviceToken) {
-        localStorage.setItem('deviceToken', data.deviceToken);
+        // 4. Salva (ou atualiza) o token na chave específica do usuário.
+        localStorage.setItem(userTokenKey, data.deviceToken);
     }
+
     return data;
 }
 
 export async function logout() {
-    try {
-        await authenticatedFetch('/logout');
-    } finally {
-        localStorage.removeItem('deviceToken'); // Limpa o token do dispositivo no logout
-    }
+    await authenticatedFetch('/logout');
 }
 
 export function fetchWarehouses() {

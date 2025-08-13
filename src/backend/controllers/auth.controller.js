@@ -1,6 +1,6 @@
 // src/backend/controllers/auth.controller.js
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
+const jwt =require('jsonwebtoken');
 const sankhya = require('../services/sankhya.service');
 const logger = require('../../../logger');
 const { sanitizeStringForSql } = require('../utils/sanitizer');
@@ -17,13 +17,12 @@ const login = async (req, res, next) => {
     try {
         if (loginAttempts[deviceIdentifier] && loginAttempts[deviceIdentifier].lockedUntil > Date.now()) {
             const remainingTime = Math.ceil((loginAttempts[deviceIdentifier].lockedUntil - Date.now()) / 60000);
-            logger.warn(`Tentativa de login bloqueada para o dispositivo ${deviceIdentifier}. Tempo restante: ${remainingTime} min.`);
             return res.status(429).json({ message: `Muitas tentativas de login. Tente novamente em ${remainingTime} minutos.` });
         }
 
         logger.http(`Tentativa de login para o usuário: ${username}`);
         
-        // 1. Obter CODUSU
+        // Usando callAsSystem para as buscas no banco, como no original, garantindo um token novo.
         const userQueryResponse = await sankhya.callAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
         });
@@ -32,7 +31,6 @@ const login = async (req, res, next) => {
         }
         const codUsu = userQueryResponse.responseBody.rows[0][0];
 
-        // 2. Verificar permissão de acesso ao App (AD_APPPERM)
         const permAppResponse = await sankhya.callAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT NUMREG FROM AD_APPPERM WHERE CODUSU = ${codUsu}`
         });
@@ -41,7 +39,6 @@ const login = async (req, res, next) => {
         }
         const numReg = permAppResponse.responseBody.rows[0][0];
         
-        // 3. Validação de Dispositivo
         let finalDeviceToken = clientDeviceToken;
         let deviceIsAuthorized = false;
 
@@ -53,7 +50,7 @@ const login = async (req, res, next) => {
                 if (deviceCheckResponse.responseBody.rows[0][0] === 'S') {
                     deviceIsAuthorized = true;
                 } else {
-                    return res.status(403).json({ message: 'Dispositivo registrado, mas inativo. Contate um administrador.', deviceToken: clientDeviceToken });
+                    return res.status(403).json({ message: 'Este dispositivo está registrado, mas não está ativo. Contate um administrador.', deviceToken: clientDeviceToken });
                 }
             }
         }
@@ -61,15 +58,19 @@ const login = async (req, res, next) => {
         if (!deviceIsAuthorized) {
             finalDeviceToken = crypto.randomBytes(20).toString('hex');
             const descrDisp = req.headers['user-agent']?.substring(0, 100) || 'Dispositivo Web';
-            await sankhya.call('DatasetSP.save', {
+            
+            // Usando "call" (token cache) para salvar o dispositivo, como no original (callSankhyaService)
+            const saveResponse = await sankhya.call('DatasetSP.save', {
                 entityName: 'AD_DISPAUT',
                 fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
                 records: [{ values: { 0: codUsu, 1: finalDeviceToken, 2: sanitizeStringForSql(descrDisp), 3: 'N', 4: new Date().toLocaleDateString('pt-BR') } }],
             });
+            if (saveResponse.status !== '1') throw new Error(saveResponse.statusMessage || 'Falha ao tentar registrar o novo dispositivo.');
+
             return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: finalDeviceToken });
         }
         
-        // 4. Validar Senha
+        // Usando "call" (token cache) para validar a senha do usuário, como no original
         const loginResponse = await sankhya.call('MobileLoginSP.login', {
             NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
@@ -78,8 +79,8 @@ const login = async (req, res, next) => {
             throw new Error(loginResponse.statusMessage || 'Credenciais de operador inválidas.');
         }
         
-        // 5. Sucesso - Gerar e enviar Token JWT
         delete loginAttempts[deviceIdentifier];
+
         const sessionPayload = { username, codusu: codUsu, numreg: numReg };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
 
@@ -102,7 +103,6 @@ const login = async (req, res, next) => {
             loginAttempts[deviceIdentifier].lockedUntil = Date.now() + LOCKOUT_TIME;
         }
         logger.error(`Falha no login para ${username}: ${error.message}`);
-        // Passa o erro para o middleware de tratamento de erros
         next(error);
     }
 };

@@ -28,15 +28,20 @@ async function main() {
 
 // Lida com o processo de login
 async function handleLogin() {
-    const username = document.getElementById('login-username').value.trim();
-    const password = document.getElementById('login-password').value.trim();
+    const usernameInput = document.getElementById('login-username');
+    const passwordInput = document.getElementById('login-password');
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value.trim();
+
     if (!username || !password) {
         return openConfirmModal("Por favor, preencha o usuário e a senha.");
     }
     showLoading(true);
     
     try {
+        // A principal mudança está aqui: passamos o 'username' para a função de login da API.
         const response = await api.login(username, password);
+        
         AppState.setUserSession(response);
         
         PageRenderer.switchView('main');
@@ -46,7 +51,7 @@ async function handleLogin() {
         AppState.clearUserSession();
         openConfirmModal(error.message, "Falha no Login");
     } finally {
-        document.getElementById('login-password').value = '';
+        passwordInput.value = '';
         showLoading(false);
     }
 }
