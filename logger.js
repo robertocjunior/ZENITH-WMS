@@ -1,5 +1,7 @@
 // logger.js
 const { createLogger, format, transports, addColors } = require('winston');
+const DailyRotateFile = require('winston-daily-rotate-file');
+const path = require('path');
 
 // Define a ordem e o formato dos níveis de log (padrão do npm)
 const logLevels = {
@@ -15,28 +17,66 @@ const logLevels = {
     warn: 'yellow',
     info: 'green',
     http: 'magenta',
-    debug: 'blue',
+    debug: 'white',
   }
 };
 
-// Adiciona as cores ao Winston
+// Adiciona as cores ao Winston para uso no console
 addColors(logLevels.colors);
 
-// Define o formato do log para o console
-const logFormat = format.combine(
+// Formato para o CONSOLE (colorido e simples)
+const consoleFormat = format.combine(
   format.timestamp({ format: 'DD-MM-YYYY HH:mm:ss' }),
-  format.colorize({ all: true }), // Aplica cores a todo o output do nível
+  format.colorize({ all: true }),
   format.printf(
     (info) => `[${info.timestamp}] ${info.level}: ${info.message}`
   )
 );
 
-// Cria a instância do logger
+// Formato para os ARQUIVOS (sem cores, para ser puro texto)
+const fileFormat = format.combine(
+  format.timestamp({ format: 'DD-MM-YYYY HH:mm:ss' }),
+  format.printf(
+    (info) => `[${info.timestamp}] ${info.level.toUpperCase()}: ${info.message}`
+  )
+);
+
+// Transportes (onde os logs serão salvos/exibidos)
+
+const logTransports = [
+  // 1. Sempre exibir no console
+  new transports.Console({
+    format: consoleFormat,
+  }),
+  
+  // 2. Salvar todos os logs em um arquivo diário
+  new DailyRotateFile({
+    level: 'debug', // Salva desde o nível 'debug' (ou seja, tudo)
+    filename: path.join('logs', 'all-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '20m',
+    maxFiles: '14d', // Guarda os logs dos últimos 14 dias
+    format: fileFormat,
+  }),
+
+  // 3. Salvar apenas os erros em um arquivo separado
+  new DailyRotateFile({
+    level: 'error', // Salva apenas 'error'
+    filename: path.join('logs', 'error-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '20m',
+    maxFiles: '30d', // Guarda os logs de erro dos últimos 30 dias
+    format: fileFormat,
+  }),
+];
+
+// Cria a instância final do logger
 const logger = createLogger({
   levels: logLevels.levels,
-  format: logFormat,
-  // O "transporte" é onde o log será exibido. Neste caso, o console.
-  transports: [new transports.Console()],
+  transports: logTransports,
+  exitOnError: false, // Não finaliza a aplicação em caso de erro no logger
 });
 
 module.exports = logger;
