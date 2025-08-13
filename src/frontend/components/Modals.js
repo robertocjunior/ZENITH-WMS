@@ -9,11 +9,20 @@ let transactionCallback = null;
 
 function openBaixaModal() {
     const item = AppState.getCurrentItem();
+
+    // --- LINHA DE DEBUG ---
+    // Adicione esta linha para inspecionar o objeto 'item' no console.
+    console.log("Dados do item para o modal:", item);
+    // --- FIM DO DEBUG ---
+
     if (!item) return;
+    
+    // Este é o código que deveria preencher os campos
     document.getElementById('modal-qtd-disponivel').textContent = item.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-baixa');
     qtdInput.value = item.quantidade;
     qtdInput.max = item.quantidade;
+
     document.getElementById('baixa-modal').classList.remove('hidden');
 }
 
@@ -24,7 +33,10 @@ function openTransferModal() {
 
     document.getElementById('modal-qtd-disponivel-transfer').textContent = item.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-transfer');
-    qtdInput.value = item.quantidade;
+
+    // AQUI: A quantidade do item é preenchida automaticamente no campo.
+    qtdInput.value = item.quantidade; 
+
     qtdInput.max = item.quantidade;
     document.getElementById('modal-enddes-transfer').value = '';
     
@@ -41,7 +53,10 @@ async function openPickingModal() {
 
     document.getElementById('modal-qtd-disponivel-picking').textContent = item.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-picking');
-    qtdInput.value = item.quantidade;
+    
+    // AQUI: A quantidade do item é preenchida automaticamente no campo.
+    qtdInput.value = item.quantidade; 
+
     qtdInput.max = item.quantidade;
 
     const selectPicking = document.getElementById('modal-seqend-picking');
@@ -71,7 +86,7 @@ function openCorrecaoModal() {
     const item = AppState.getCurrentItem();
     if (!item) return;
     document.getElementById('modal-qtd-disponivel-correcao').textContent = item.qtdCompleta;
-    document.getElementById('modal-qtd-correcao').value = '';
+    document.getElementById('modal-qtd-correcao').value = ''; // Correção começa vazio de propósito
     document.getElementById('correcao-modal').classList.remove('hidden');
 }
 
@@ -159,25 +174,21 @@ function handleConfirmCorrecao() {
     transactionCallback('correcao', payload);
 }
 
-
 // --- Inicializador de Eventos ---
 
 function initializeModalEventListeners(onTransaction) {
     transactionCallback = onTransaction;
 
-    // Botões de Ação na página de Detalhes
     document.querySelector('.btn-baixar').addEventListener('click', openBaixaModal);
     document.querySelector('.btn-transferir').addEventListener('click', openTransferModal);
     document.querySelector('.btn-picking').addEventListener('click', openPickingModal);
     document.querySelector('.btn-correcao').addEventListener('click', openCorrecaoModal);
 
-    // Botões de Confirmação dos Modais
     document.getElementById('btn-confirmar-baixa').addEventListener('click', handleConfirmBaixa);
     document.getElementById('btn-confirmar-transfer').addEventListener('click', handleConfirmTransfer);
     document.getElementById('btn-confirmar-picking').addEventListener('click', handleConfirmPicking);
     document.getElementById('btn-confirmar-correcao').addEventListener('click', handleConfirmCorrecao);
 
-    // Botões de Cancelamento dos Modais
     document.getElementById('btn-cancelar-baixa').addEventListener('click', closeBaixaModal);
     document.getElementById('btn-cancelar-transfer').addEventListener('click', closeTransferModal);
     document.getElementById('btn-cancelar-picking').addEventListener('click', closePickingModal);

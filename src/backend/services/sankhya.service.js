@@ -3,8 +3,12 @@ const axios = require('axios');
 const logger = require('../../../logger');
 
 const SANKHYA_API_URL = process.env.SANKHYA_API_URL;
-let systemBearerToken = null;
+let systemBearerToken = null; // Variável para guardar o token em cache
 
+/**
+ * Método 1: getSystemBearerToken
+ * Pega o token de sistema, usando o cache. Renova apenas se não existir ou se for forçado.
+ */
 async function getSystemBearerToken(forceRefresh = false) {
     if (systemBearerToken && !forceRefresh) return systemBearerToken;
     try {
@@ -30,7 +34,8 @@ async function getSystemBearerToken(forceRefresh = false) {
 }
 
 /**
- * Método "call" - Para TRANSAÇÕES (salvar, validar senha, etc.).
+ * Método 2: "call" - Para TRANSAÇÕES (salvar, validar senha, etc.).
+ * Equivalente ao `callSankhyaService` do seu código original.
  * Usa o token em cache e o método POST.
  */
 async function call(serviceName, requestBody) {
@@ -59,11 +64,12 @@ async function call(serviceName, requestBody) {
 }
 
 /**
- * Método "callAsSystem" - Para CONSULTAS (SELECT / DbExplorerSP.executeQuery).
- * Sempre faz um novo login e usa o método GET, alinhado com o teste do Postman.
+ * Método 3: "callAsSystem" - Para CONSULTAS (SELECT / DbExplorerSP.executeQuery).
+ * Equivalente ao `callSankhyaAsSystem` do seu código original.
+ * Sempre faz um novo login para garantir um token 100% novo e usa POST.
  */
 async function callAsSystem(serviceName, requestBody) {
-    logger.http(`Executando '${serviceName}' com um token de sistema novo (via GET)...`);
+    logger.http(`Executando '${serviceName}' com um token de sistema novo...`);
     try {
         const loginResponse = await axios.post(
             `${SANKHYA_API_URL}/login`, {},
@@ -78,13 +84,7 @@ async function callAsSystem(serviceName, requestBody) {
         if (!freshSystemToken) throw new Error('Falha ao obter token de sistema para a consulta.');
 
         const url = `${SANKHYA_API_URL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
-        
-        // MUDANÇA PRINCIPAL: Usando GET para alinhar com o teste do Postman
-        const serviceResponse = await axios.get(url, {
-            headers: { Authorization: `Bearer ${freshSystemToken}` },
-            data: { requestBody }
-        });
-
+        const serviceResponse = await axios.post(url, { requestBody }, { headers: { Authorization: `Bearer ${freshSystemToken}` } });
         return serviceResponse.data;
     } catch (error) {
         const errorMessage = error.response?.data?.statusMessage || `Falha ao executar ${serviceName} como sistema.`;

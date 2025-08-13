@@ -1,17 +1,14 @@
 // src/backend/controllers/wms.controller.js
 const sankhya = require('../services/sankhya.service');
 const logger = require('../../../logger');
-const { sanitizeNumber, sanitizeStringForSql, formatDbDateToApi } = require('../utils/sanitizer');
+const { sanitizeNumber, sanitizeStringForSql } = require('../utils/sanitizer');
 
-// Função auxiliar para checar a resposta da API de forma padronizada
 const checkApiResponse = (data) => {
     if (!data || data.status !== '1') {
-        // Se a API retornar um status de erro, lança uma exceção com a mensagem dela
         const errorMessage = data?.statusMessage || 'Falha na comunicação com a API Sankhya.';
         throw new Error(errorMessage);
     }
     if (!data.responseBody) {
-        // Se a API retornar sucesso mas não o corpo esperado, lança uma exceção
         throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
     }
 };
@@ -20,12 +17,10 @@ const getWarehouses = async (req, res, next) => {
     const { username, numreg } = req.userSession;
     try {
         const sql = `SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM WHERE CODARM IN (SELECT CODARM FROM AD_PERMEND WHERE NUMREG = ${sanitizeNumber(numreg)}) ORDER BY CODARM`;
+        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
         const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
         
-        // VERIFICAÇÃO DE SEGURANÇA ADICIONADA
         checkApiResponse(data);
-
-        // Se 'rows' não existir, retorna um array vazio para evitar erros no frontend
         res.json(data.responseBody.rows || []);
     } catch (error) {
         logger.error(`Erro em getWarehouses para ${username}: ${error.message}`);
@@ -37,12 +32,12 @@ const getPermissions = async (req, res, next) => {
     const { username, codusu } = req.userSession;
     try {
         const sql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
         const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
         
         checkApiResponse(data);
 
         if (!data.responseBody.rows?.length) {
-            // Se o usuário não tiver permissões cadastradas, retorna tudo como falso
             return res.json({ baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false });
         }
         const perms = data.responseBody.rows[0];
@@ -84,10 +79,10 @@ const searchItems = async (req, res, next) => {
             }
         }
         
+        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
         const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql: sql + orderBy });
         
         checkApiResponse(data);
-
         res.json(data.responseBody.rows || []);
     } catch (error) {
         logger.error(`Erro em searchItems para ${username}: ${error.message}`);
@@ -100,6 +95,7 @@ const getItemDetails = async (req, res, next) => {
     const { username } = req.userSession;
     try {
         const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)} AND ENDE.SEQEND = ${sanitizeNumber(sequencia)}`;
+        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
         const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
         
         checkApiResponse(data);
@@ -119,10 +115,10 @@ const getPickingLocations = async (req, res, next) => {
     const { username } = req.userSession;
     try {
         const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codarm)} AND ENDE.CODPROD = ${sanitizeNumber(codprod)} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sanitizeNumber(sequencia)} ORDER BY ENDE.SEQEND`;
+        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
         const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
 
         checkApiResponse(data);
-
         res.json(data.responseBody.rows || []);
     } catch (error) {
         logger.error(`Erro em getPickingLocations para ${username}: ${error.message}`);
@@ -143,10 +139,10 @@ const getHistory = async (req, res, next) => {
             FROM AD_HISTENDAPP H
             WHERE H.CODUSU = ${codusu} AND TRUNC(H.DTHOPER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
             ORDER BY 2 DESC, 15 ASC`;
+        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
         const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
         
         checkApiResponse(data);
-
         res.json(data.responseBody.rows || []);
     } catch (error) {
         logger.error(`Erro em getHistory para ${username}: ${error.message}`);
@@ -154,16 +150,10 @@ const getHistory = async (req, res, next) => {
     }
 };
 
-// A função executeTransaction é muito complexa para ser incluída aqui sem o código original completo.
-// Se precisar, posso ajudá-lo a refatorá-la também, mas ela precisaria de tratamento de erro similar
-// em cada chamada à API sankhya.
 const executeTransaction = async (req, res, next) => {
-    const { type, payload } = req.body;
-    const { username } = req.userSession;
-    // O ideal é adicionar a validação "checkApiResponse" após cada chamada a `sankhya.call`
-    // dentro da lógica original desta função.
-    logger.info(`A função executeTransaction ainda precisa da refatoração de tratamento de erros internos.`);
-    res.status(501).json({ message: 'Funcionalidade de transação ainda não totalmente implementada com o novo tratamento de erros.'});
+    // Esta função precisará ser refatorada para usar a mesma lógica de
+    // `call` e `callAsSystem` para cada etapa, como no seu server.js original.
+    res.status(501).json({ message: 'Funcionalidade de transação ainda não totalmente implementada.'});
 };
 
 module.exports = {

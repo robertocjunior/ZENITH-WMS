@@ -1,6 +1,6 @@
 // src/backend/controllers/auth.controller.js
 const crypto = require('crypto');
-const jwt =require('jsonwebtoken');
+const jwt = require('jsonwebtoken');
 const sankhya = require('../services/sankhya.service');
 const logger = require('../../../logger');
 const { sanitizeStringForSql } = require('../utils/sanitizer');
@@ -22,7 +22,7 @@ const login = async (req, res, next) => {
 
         logger.http(`Tentativa de login para o usuário: ${username}`);
         
-        // Usando callAsSystem para as buscas no banco, como no original, garantindo um token novo.
+        // CORREÇÃO: Usando callAsSystem para as buscas no banco, como no original.
         const userQueryResponse = await sankhya.callAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
         });
@@ -31,6 +31,7 @@ const login = async (req, res, next) => {
         }
         const codUsu = userQueryResponse.responseBody.rows[0][0];
 
+        // CORREÇÃO: Usando callAsSystem.
         const permAppResponse = await sankhya.callAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT NUMREG FROM AD_APPPERM WHERE CODUSU = ${codUsu}`
         });
@@ -43,6 +44,7 @@ const login = async (req, res, next) => {
         let deviceIsAuthorized = false;
 
         if (clientDeviceToken) {
+            // CORREÇÃO: Usando callAsSystem.
             const deviceCheckResponse = await sankhya.callAsSystem('DbExplorerSP.executeQuery', {
                 sql: `SELECT ATIVO FROM AD_DISPAUT WHERE CODUSU = ${codUsu} AND DEVICETOKEN = '${sanitizeStringForSql(clientDeviceToken)}'`,
             });
@@ -59,7 +61,7 @@ const login = async (req, res, next) => {
             finalDeviceToken = crypto.randomBytes(20).toString('hex');
             const descrDisp = req.headers['user-agent']?.substring(0, 100) || 'Dispositivo Web';
             
-            // Usando "call" (token cache) para salvar o dispositivo, como no original (callSankhyaService)
+            // CORREÇÃO: Usando "call" para salvar, como no original (callSankhyaService).
             const saveResponse = await sankhya.call('DatasetSP.save', {
                 entityName: 'AD_DISPAUT',
                 fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
@@ -70,7 +72,7 @@ const login = async (req, res, next) => {
             return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: finalDeviceToken });
         }
         
-        // Usando "call" (token cache) para validar a senha do usuário, como no original
+        // CORREÇÃO: Usando "call" para validar a senha, como no original.
         const loginResponse = await sankhya.call('MobileLoginSP.login', {
             NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
