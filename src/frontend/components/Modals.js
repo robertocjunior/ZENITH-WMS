@@ -9,20 +9,14 @@ let transactionCallback = null;
 
 function openBaixaModal() {
     const item = AppState.getCurrentItem();
-
-    // --- LINHA DE DEBUG ---
-    // Adicione esta linha para inspecionar o objeto 'item' no console.
-    console.log("Dados do item para o modal:", item);
-    // --- FIM DO DEBUG ---
-
     if (!item) return;
-    
-    // Este é o código que deveria preencher os campos
+
+    // AQUI: Este código preenche a quantidade disponível e o campo de texto no pop-up.
     document.getElementById('modal-qtd-disponivel').textContent = item.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-baixa');
-    qtdInput.value = item.quantidade;
+    qtdInput.value = item.quantidade; 
+    
     qtdInput.max = item.quantidade;
-
     document.getElementById('baixa-modal').classList.remove('hidden');
 }
 
@@ -31,10 +25,9 @@ function openTransferModal() {
     const perms = AppState.getPermissions();
     if (!item) return;
 
+    // AQUI: Preenche a quantidade no pop-up de transferência.
     document.getElementById('modal-qtd-disponivel-transfer').textContent = item.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-transfer');
-
-    // AQUI: A quantidade do item é preenchida automaticamente no campo.
     qtdInput.value = item.quantidade; 
 
     qtdInput.max = item.quantidade;
@@ -51,10 +44,9 @@ async function openPickingModal() {
     const item = AppState.getCurrentItem();
     if (!item) return;
 
+    // AQUI: Preenche a quantidade no pop-up de picking.
     document.getElementById('modal-qtd-disponivel-picking').textContent = item.qtdCompleta;
     const qtdInput = document.getElementById('modal-qtd-picking');
-    
-    // AQUI: A quantidade do item é preenchida automaticamente no campo.
     qtdInput.value = item.quantidade; 
 
     qtdInput.max = item.quantidade;
@@ -85,8 +77,10 @@ async function openPickingModal() {
 function openCorrecaoModal() {
     const item = AppState.getCurrentItem();
     if (!item) return;
+
+    // AQUI: Preenche a quantidade no pop-up de correção.
     document.getElementById('modal-qtd-disponivel-correcao').textContent = item.qtdCompleta;
-    document.getElementById('modal-qtd-correcao').value = ''; // Correção começa vazio de propósito
+    document.getElementById('modal-qtd-correcao').value = '';
     document.getElementById('correcao-modal').classList.remove('hidden');
 }
 

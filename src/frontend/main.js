@@ -3,20 +3,18 @@ import { AppState } from './state/index.js';
 import { PageRenderer } from './components/PageRenderer.js';
 import { InactivityTimer } from './utils/InactivityTimer.js';
 import { initializeModalEventListeners } from './components/Modals.js';
-import { initializeProfilePanelListeners } from './components/ProfilePanel.js'; // IMPORT CORRIGIDO
+import { initializeProfilePanelListeners } from './components/ProfilePanel.js';
 import { showLoading, openConfirmModal } from './utils/dom.js';
 import * as api from './api/index.js';
 
 // Função principal de inicialização
 async function main() {
-    // Registrar todos os event listeners globais e de componentes
     document.getElementById('btn-login').addEventListener('click', handleLogin);
     document.getElementById('login-password').addEventListener('keyup', (e) => e.key === 'Enter' && handleLogin());
     
     initializeModalEventListeners(handleTransaction);
-    initializeProfilePanelListeners(handleLogout, showHistoryPage); // CHAMADA CORRIGIDA
+    initializeProfilePanelListeners(handleLogout, showHistoryPage);
 
-    // Verifica se já existe uma sessão ativa (ex: após recarregar a página)
     if (AppState.isUserLoggedIn()) {
         PageRenderer.switchView('main');
         InactivityTimer.start(() => handleLogout(true));
@@ -39,9 +37,7 @@ async function handleLogin() {
     showLoading(true);
     
     try {
-        // A principal mudança está aqui: passamos o 'username' para a função de login da API.
         const response = await api.login(username, password);
-        
         AppState.setUserSession(response);
         
         PageRenderer.switchView('main');
@@ -77,7 +73,6 @@ async function handleLogout(fromInactivity = false) {
 async function setupMainPage() {
     showLoading(true);
     try {
-        // As chamadas para a API são feitas em paralelo para mais performance
         const [warehouses, permissions] = await Promise.all([
             api.fetchWarehouses(),
             api.fetchPermissions()
@@ -100,7 +95,6 @@ async function handleSearch() {
         const codArm = document.getElementById('armazem-select').value;
         const filtro = document.getElementById('filtro-sequencia').value;
         if (!codArm) {
-            // Não joga erro, apenas avisa que precisa selecionar
             return openConfirmModal("Por favor, selecione um armazém para buscar.");
         }
 
@@ -108,7 +102,7 @@ async function handleSearch() {
         PageRenderer.renderSearchResults(items, handleShowDetails);
     } catch (error) {
         openConfirmModal(error.message, "Erro na Busca");
-        PageRenderer.renderSearchResults([]); // Limpa resultados em caso de erro
+        PageRenderer.renderSearchResults([]);
     } finally {
         showLoading(false);
     }
@@ -120,7 +114,7 @@ async function handleShowDetails(sequencia) {
     try {
         const codArm = document.getElementById('armazem-select').value;
         const details = await api.fetchItemDetails(codArm, sequencia);
-        AppState.setCurrentItem(details);
+        // AQUI: Passamos os detalhes para o PageRenderer, que irá processar e salvar no estado.
         PageRenderer.renderDetailsPage(details);
     } catch (error) {
         openConfirmModal(error.message, "Erro ao carregar detalhes");
@@ -151,7 +145,7 @@ async function handleTransaction(type, payload) {
         const result = await api.executeTransaction(type, payload);
         openConfirmModal(result.message, 'Sucesso!');
         PageRenderer.switchView('main');
-        await handleSearch(); // Atualiza a lista principal após voltar
+        await handleSearch();
     } catch (error) {
         openConfirmModal(error.message, `Falha na Operação`);
     } finally {
@@ -159,5 +153,4 @@ async function handleTransaction(type, payload) {
     }
 }
 
-// Inicia a aplicação quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', main);

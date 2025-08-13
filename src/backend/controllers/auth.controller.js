@@ -1,7 +1,7 @@
 // src/backend/controllers/auth.controller.js
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const sankhya = require('../services/sankhya.service');
+const { callSankhyaService, callSankhyaAsSystem } = require('../services/sankhya.service');
 const logger = require('../../../logger');
 const { sanitizeStringForSql } = require('../utils/sanitizer');
 
@@ -12,18 +12,10 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 const login = async (req, res, next) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
-    const deviceIdentifier = clientDeviceToken || req.ip;
-
     try {
-        if (loginAttempts[deviceIdentifier] && loginAttempts[deviceIdentifier].lockedUntil > Date.now()) {
-            const remainingTime = Math.ceil((loginAttempts[deviceIdentifier].lockedUntil - Date.now()) / 60000);
-            return res.status(429).json({ message: `Muitas tentativas de login. Tente novamente em ${remainingTime} minutos.` });
-        }
-
         logger.http(`Tentativa de login para o usuário: ${username}`);
         
-        // CORREÇÃO: Usando callAsSystem para as buscas no banco, como no original.
-        const userQueryResponse = await sankhya.callAsSystem('DbExplorerSP.executeQuery', {
+        const userQueryResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
         });
         if (userQueryResponse.status !== '1' || !userQueryResponse.responseBody?.rows.length) {
@@ -31,8 +23,7 @@ const login = async (req, res, next) => {
         }
         const codUsu = userQueryResponse.responseBody.rows[0][0];
 
-        // CORREÇÃO: Usando callAsSystem.
-        const permAppResponse = await sankhya.callAsSystem('DbExplorerSP.executeQuery', {
+        const permAppResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT NUMREG FROM AD_APPPERM WHERE CODUSU = ${codUsu}`
         });
         if (permAppResponse.status !== '1' || !permAppResponse.responseBody?.rows.length) {
@@ -44,15 +35,14 @@ const login = async (req, res, next) => {
         let deviceIsAuthorized = false;
 
         if (clientDeviceToken) {
-            // CORREÇÃO: Usando callAsSystem.
-            const deviceCheckResponse = await sankhya.callAsSystem('DbExplorerSP.executeQuery', {
+            const deviceCheckResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
                 sql: `SELECT ATIVO FROM AD_DISPAUT WHERE CODUSU = ${codUsu} AND DEVICETOKEN = '${sanitizeStringForSql(clientDeviceToken)}'`,
             });
             if (deviceCheckResponse.responseBody?.rows.length > 0) {
                 if (deviceCheckResponse.responseBody.rows[0][0] === 'S') {
                     deviceIsAuthorized = true;
                 } else {
-                    return res.status(403).json({ message: 'Este dispositivo está registrado, mas não está ativo. Contate um administrador.', deviceToken: clientDeviceToken });
+                    return res.status(403).json({ message: 'Este dispositivo está registrado, mas não está ativo.', deviceToken: clientDeviceToken });
                 }
             }
         }
@@ -61,8 +51,7 @@ const login = async (req, res, next) => {
             finalDeviceToken = crypto.randomBytes(20).toString('hex');
             const descrDisp = req.headers['user-agent']?.substring(0, 100) || 'Dispositivo Web';
             
-            // CORREÇÃO: Usando "call" para salvar, como no original (callSankhyaService).
-            const saveResponse = await sankhya.call('DatasetSP.save', {
+            const saveResponse = await callSankhyaService('DatasetSP.save', {
                 entityName: 'AD_DISPAUT',
                 fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
                 records: [{ values: { 0: codUsu, 1: finalDeviceToken, 2: sanitizeStringForSql(descrDisp), 3: 'N', 4: new Date().toLocaleDateString('pt-BR') } }],
@@ -72,16 +61,13 @@ const login = async (req, res, next) => {
             return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: finalDeviceToken });
         }
         
-        // CORREÇÃO: Usando "call" para validar a senha, como no original.
-        const loginResponse = await sankhya.call('MobileLoginSP.login', {
+        const loginResponse = await callSankhyaService('MobileLoginSP.login', {
             NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
         });
         if (loginResponse.status !== '1') {
             throw new Error(loginResponse.statusMessage || 'Credenciais de operador inválidas.');
         }
-        
-        delete loginAttempts[deviceIdentifier];
 
         const sessionPayload = { username, codusu: codUsu, numreg: numReg };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
@@ -97,13 +83,6 @@ const login = async (req, res, next) => {
         res.json({ username, codusu: codUsu, numreg: numReg, deviceToken: finalDeviceToken });
 
     } catch (error) {
-        if (!loginAttempts[deviceIdentifier]) {
-            loginAttempts[deviceIdentifier] = { count: 0, lockedUntil: null };
-        }
-        loginAttempts[deviceIdentifier].count++;
-        if (loginAttempts[deviceIdentifier].count >= MAX_ATTEMPTS) {
-            loginAttempts[deviceIdentifier].lockedUntil = Date.now() + LOCKOUT_TIME;
-        }
         logger.error(`Falha no login para ${username}: ${error.message}`);
         next(error);
     }

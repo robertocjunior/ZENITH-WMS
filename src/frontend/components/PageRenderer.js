@@ -30,7 +30,6 @@ function populateWarehouses(warehouses, onSearch) {
         });
     }
 
-    // Adiciona os listeners de busca aqui, uma vez que os elementos estão prontos
     document.getElementById('btn-consultar').onclick = onSearchCallback;
     document.getElementById('filtro-sequencia').onkeyup = (e) => e.key === 'Enter' && onSearchCallback();
 }
@@ -41,8 +40,12 @@ function renderSearchResults(items, onShowDetails) {
 }
 
 function renderDetailsPage(detailsArray) {
+    // AQUI (Passo 1): Recebemos o array de dados da API e o transformamos em um objeto com nomes.
     const [codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta, derivacao] = detailsArray;
     const details = { codarm, sequencia, rua, predio, apto, codprod, descrprod, marca, datval, quantidade, endpic, qtdCompleta, derivacao };
+    
+    // AQUI (Passo 2): Salvamos este objeto no estado da aplicação. É daqui que o Modal.js vai ler.
+    AppState.setCurrentItem(details);
     
     const detailsContent = document.getElementById('details-content');
     detailsContent.innerHTML = '';

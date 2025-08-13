@@ -1,15 +1,12 @@
 // src/backend/controllers/wms.controller.js
-const sankhya = require('../services/sankhya.service');
+const { callSankhyaService, callSankhyaAsSystem } = require('../services/sankhya.service');
 const logger = require('../../../logger');
-const { sanitizeNumber, sanitizeStringForSql } = require('../utils/sanitizer');
+const { sanitizeNumber, sanitizeStringForSql, formatDbDateToApi } = require('../utils/sanitizer');
 
 const checkApiResponse = (data) => {
     if (!data || data.status !== '1') {
         const errorMessage = data?.statusMessage || 'Falha na comunicação com a API Sankhya.';
         throw new Error(errorMessage);
-    }
-    if (!data.responseBody) {
-        throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
     }
 };
 
@@ -17,10 +14,9 @@ const getWarehouses = async (req, res, next) => {
     const { username, numreg } = req.userSession;
     try {
         const sql = `SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM WHERE CODARM IN (SELECT CODARM FROM AD_PERMEND WHERE NUMREG = ${sanitizeNumber(numreg)}) ORDER BY CODARM`;
-        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
-        const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
-        
+        const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
+        if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
         res.json(data.responseBody.rows || []);
     } catch (error) {
         logger.error(`Erro em getWarehouses para ${username}: ${error.message}`);
@@ -32,22 +28,15 @@ const getPermissions = async (req, res, next) => {
     const { username, codusu } = req.userSession;
     try {
         const sql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
-        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
-        const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
-        
+        const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
-
-        if (!data.responseBody.rows?.length) {
+        if (!data.responseBody?.rows?.length) {
             return res.json({ baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false });
         }
         const perms = data.responseBody.rows[0];
         res.json({
-            baixa: perms[0] === 'S',
-            transfer: perms[1] === 'S',
-            pick: perms[2] === 'S',
-            corre: perms[3] === 'S',
-            bxaPick: perms[4] === 'S',
-            criaPick: perms[5] === 'S',
+            baixa: perms[0] === 'S', transfer: perms[1] === 'S', pick: perms[2] === 'S',
+            corre: perms[3] === 'S', bxaPick: perms[4] === 'S', criaPick: perms[5] === 'S',
         });
     } catch (error) {
         logger.error(`Erro em getPermissions para ${username}: ${error.message}`);
@@ -55,13 +44,13 @@ const getPermissions = async (req, res, next) => {
     }
 };
 
+// FUNÇÃO searchItems QUE ESTAVA FALTANDO
 const searchItems = async (req, res, next) => {
     const { codArm, filtro } = req.body;
     const { username } = req.userSession;
     try {
         let sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)}`;
         let orderBy = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
-
         if (filtro) {
             const filtroLimpo = filtro.trim();
             if (/^\d+$/.test(filtroLimpo)) {
@@ -78,11 +67,9 @@ const searchItems = async (req, res, next) => {
                 if (condicoes.length > 0) sql += ` AND ${condicoes.join(' AND ')}`;
             }
         }
-        
-        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
-        const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql: sql + orderBy });
-        
+        const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: sql + orderBy });
         checkApiResponse(data);
+        if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
         res.json(data.responseBody.rows || []);
     } catch (error) {
         logger.error(`Erro em searchItems para ${username}: ${error.message}`);
@@ -95,12 +82,9 @@ const getItemDetails = async (req, res, next) => {
     const { username } = req.userSession;
     try {
         const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)} AND ENDE.SEQEND = ${sanitizeNumber(sequencia)}`;
-        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
-        const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
-        
+        const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
-
-        if (!data.responseBody.rows?.length) {
+        if (!data.responseBody?.rows?.length) {
             throw new Error('Produto não encontrado ou detalhes indisponíveis.');
         }
         res.json(data.responseBody.rows[0]);
@@ -115,10 +99,9 @@ const getPickingLocations = async (req, res, next) => {
     const { username } = req.userSession;
     try {
         const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codarm)} AND ENDE.CODPROD = ${sanitizeNumber(codprod)} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sanitizeNumber(sequencia)} ORDER BY ENDE.SEQEND`;
-        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
-        const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
-
+        const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
+        if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
         res.json(data.responseBody.rows || []);
     } catch (error) {
         logger.error(`Erro em getPickingLocations para ${username}: ${error.message}`);
@@ -139,10 +122,9 @@ const getHistory = async (req, res, next) => {
             FROM AD_HISTENDAPP H
             WHERE H.CODUSU = ${codusu} AND TRUNC(H.DTHOPER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
             ORDER BY 2 DESC, 15 ASC`;
-        // CORREÇÃO: Usando o método 'callAsSystem' para consultas.
-        const data = await sankhya.callAsSystem('DbExplorerSP.executeQuery', { sql });
-        
+        const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
+        if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
         res.json(data.responseBody.rows || []);
     } catch (error) {
         logger.error(`Erro em getHistory para ${username}: ${error.message}`);
@@ -151,9 +133,130 @@ const getHistory = async (req, res, next) => {
 };
 
 const executeTransaction = async (req, res, next) => {
-    // Esta função precisará ser refatorada para usar a mesma lógica de
-    // `call` e `callAsSystem` para cada etapa, como no seu server.js original.
-    res.status(501).json({ message: 'Funcionalidade de transação ainda não totalmente implementada.'});
+	const { type, payload } = req.body;
+	const { username, codusu } = req.userSession;
+	logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
+
+	try {
+		const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+		const permData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: permCheckSql });
+		checkApiResponse(permData);
+		if (!permData.responseBody.rows.length) {
+			throw new Error('Você não tem permissão para esta ação.');
+		}
+		const perms = permData.responseBody.rows[0];
+		const hasPermission =
+			(type === 'baixa' && perms[0] === 'S') ||
+			(type === 'transferencia' && perms[1] === 'S') ||
+			(type === 'picking' && perms[2] === 'S') ||
+			(type === 'correcao' && perms[3] === 'S');
+
+		if (!hasPermission) {
+			return res.status(403).json({ message: 'Você não tem permissão para executar esta ação.' });
+		}
+
+		if (type === 'correcao') {
+            const { codarm, sequencia, newQuantity } = payload;
+			const itemSql = `SELECT DEND.CODPROD, DEND.CODVOL, DEND.DATENT, DEND.DATVAL, DEND.QTDPRO, PRO.MARCA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = DEND.CODPROD AND V.CODVOL = DEND.CODVOL) AS DERIVACAO FROM AD_CADEND DEND JOIN TGFPRO PRO ON DEND.CODPROD = PRO.CODPROD WHERE DEND.CODARM = ${sanitizeNumber(codarm)} AND DEND.SEQEND = ${sanitizeNumber(sequencia)}`;
+			const itemData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: itemSql });
+			checkApiResponse(itemData);
+			if (!itemData.responseBody.rows.length) throw new Error('Item não encontrado para correção.');
+			
+            const [codprod, codvol, datent, datval, qtdAnterior, marca, derivacao] = itemData.responseBody.rows[0];
+			const scriptRequestBody = { runScript: { actionID: "97", refreshType: "SEL", params: { param: [ { type: "S", paramName: "CODPROD", $: codprod }, { type: "S", paramName: "CODVOL", $: codvol || '' }, { type: "F", paramName: "QTDPRO", $: newQuantity }, { type: "D", paramName: "DATENT", $: formatDbDateToApi(datent) }, { type: "D", paramName: "DATVAL", $: formatDbDateToApi(datval) } ] }, rows: { row: [{ field: [ { fieldName: "CODARM", $: codarm.toString() }, { fieldName: "SEQEND", $: sequencia.toString() } ] }] } }, clientEventList: { clientEvent: [{ "$": "br.com.sankhya.actionbutton.clientconfirm" }] } };
+			const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
+			
+            const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU', 'DTHOPER'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu, 9: new Date() }}]};
+			await callSankhyaService('DatasetSP.save', histRecord);
+			
+            return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
+		}
+
+		const hoje = new Date().toLocaleDateString('pt-BR');
+		const cabecalhoData = await callSankhyaService('DatasetSP.save', {
+			entityName: 'AD_BXAEND',
+			fields: ['SEQBAI', 'DATGER', 'USUGER'],
+			records: [{ values: { 1: hoje, 2: codusu } }],
+		});
+		checkApiResponse(cabecalhoData);
+		if (!cabecalhoData.responseBody.result?.[0]?.[0]) {
+			throw new Error(cabecalhoData.statusMessage || 'Falha ao criar cabeçalho da transação.');
+		}
+		const seqBai = cabecalhoData.responseBody.result[0][0];
+
+		let recordsToSave = [];
+		if (type === 'baixa') {
+			recordsToSave.push({
+				entityName: 'AD_IBXEND',
+				fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
+				values: { 2: payload.codarm.toString(), 3: payload.sequencia.toString(), 4: payload.quantidade.toString(), 5: 'S' },
+			});
+		} else if (type === 'transferencia' || type === 'picking') {
+			const { codarm, sequencia, codprod } = payload.origem;
+			const { armazemDestino, enderecoDestino, quantidade, criarPick } = payload.destino;
+			const checkSql = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = '${sanitizeStringForSql(enderecoDestino)}' AND CODARM = ${sanitizeNumber(armazemDestino)}`;
+			const checkData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: checkSql });
+			checkApiResponse(checkData);
+
+			const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
+			if (destinationItem && destinationItem[0] === codprod) {
+				recordsToSave.push({
+					entityName: 'AD_IBXEND',
+					fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
+					values: { 2: armazemDestino.toString(), 3: enderecoDestino, 4: destinationItem[1].toString(), 5: 'S' },
+				});
+			}
+			recordsToSave.push({
+				entityName: 'AD_IBXEND',
+				fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'ARMDES', 'ENDDES', 'QTDPRO', 'APP'],
+				values: { 2: codarm.toString(), 3: sequencia.toString(), 4: armazemDestino.toString(), 5: enderecoDestino, 6: quantidade.toString(), 7: 'S' },
+			});
+
+			if (type === 'transferencia' && criarPick === true && perms[5] === 'S') {
+				const updateResult = await callSankhyaService('DatasetSP.save', {
+					entityName: 'CADEND', standAlone: false, fields: ['CODARM', 'SEQEND', 'ENDPIC'],
+					records: [{ pk: { CODARM: armazemDestino.toString(), SEQEND: enderecoDestino }, values: { '2': 'S' }}]
+				});
+				if (updateResult.status !== '1') logger.warn(`Falha ao definir ENDPIC='S' no destino: ${updateResult.statusMessage}`);
+                else logger.info(`Destino ${enderecoDestino} no armazém ${armazemDestino} foi definido como um local de picking.`);
+			}
+		}
+
+		for (const record of recordsToSave) {
+			record.values['1'] = seqBai;
+			const itemData = await callSankhyaService('DatasetSP.save', {
+				entityName: record.entityName, fields: record.fields, standAlone: false, records: [{ values: record.values }],
+			});
+			checkApiResponse(itemData);
+		}
+
+		const pollSql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
+		let isPopulated = false;
+		for (let i = 0; i < 10; i++) {
+			const pollData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: pollSql });
+			if (pollData.status === '1' && pollData.responseBody && parseInt(pollData.responseBody.rows[0][0], 10) >= recordsToSave.length) {
+				isPopulated = true; break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 500));
+		}
+		if (!isPopulated) throw new Error('Timeout: O sistema não populou o CODPROD a tempo.');
+
+		const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', {
+			stpCall: {
+				actionID: '20', procName: 'NIC_STP_BAIXA_END', rootEntity: 'AD_BXAEND',
+				rows: { row: [{ field: [{ fieldName: 'SEQBAI', $: seqBai }] }] },
+			},
+		});
+
+		if (stpData.status !== '1' && stpData.status !== '2') {
+			throw new Error(stpData.statusMessage || 'Falha ao executar a procedure de baixa.');
+		}
+
+		res.json({ message: stpData.statusMessage || 'Operação concluída com sucesso!' });
+	} catch (error) {
+		logger.error(`Erro em /execute-transaction para o usuário ${username}: ${error.message}`);
+		next(error);
+	}
 };
 
 module.exports = {
