@@ -1,6 +1,6 @@
 <h1 align="center">ZENITH-WMS</h1>
 <p align="center">
-<img alt="Zenith WMS Logo" src="./docs/zenith.svg" width="200">
+<img alt="Zenith WMS Logo" src="./docs/zenith.svg">
 </p>
 
 <p align="center">
