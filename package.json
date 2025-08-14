@@ -1,40 +1,45 @@
 {
   "name": "zenith-wms",
-  "short_name": "ZWMS",
   "version": "1.0.0",
-  "description": "sankhya de endereçamento Zenith",
+  "private": true,
+  "type": "commonjs",
+  "description": "Sistema de endereçamento WMS para Sankhya",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "dev": "node server.js",
+    "start": "npm run build && pm2 start ecosystem.config.js --env production",
     "build": "vite build",
-    "redeploy": "pm2 flush && pm2 delete wms-zenith && npm run build && pm2 start ecosystem.config.js --env production && pm2 logs wms-zenith"
+    "stop": "pm2 stop wms-zenith",
+    "restart": "pm2 restart wms-zenith",
+    "delete": "pm2 delete wms-zenith",
+    "logs": "pm2 logs wms-zenith",
+    "monit": "pm2 monit"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/robertocjunior/sankhya-pwa.git"
+    "url": "git+https://github.com/robertocjunior/ZENITH-WMS.git"
   },
-  "keywords": [],
-  "author": "",
+  "author": "Roberto Casali Junior",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/robertocjunior/sankhya-pwa/issues"
+    "url": "https://github.com/robertocjunior/ZENITH-WMS/issues"
   },
-  "homepage": "https://github.com/robertocjunior/sankhya-pwa#readme",
+  "homepage": "https://github.com/robertocjunior/ZENITH-WMS#readme",
   "dependencies": {
-    "axios": "^1.11.0",
-    "cookie-parser": "^1.4.7",
+    "axios": "^1.7.2",
+    "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
-    "express": "^4.21.2",
-    "express-rate-limit": "^8.0.1",
-    "helmet": "^8.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "winston": "^3.17.0",
+    "winston": "^3.13.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "zod": "^4.0.15"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
-    "terser": "^5.43.1",
-    "vite": "^7.0.6"
+    "terser": "^5.31.1",
+    "vite": "^5.3.1"
   }
 }
