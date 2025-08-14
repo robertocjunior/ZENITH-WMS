@@ -8,7 +8,7 @@ const {
     transactionSchema,
 } = require('../validationSchemas');
 
-const { authenticateToken } = require('../middleware/authenticateToken');
+const { authenticateToken } = require('./authenticateToken');
 const wmsController = require('../controllers/wms.controller');
 
 const router = express.Router();
