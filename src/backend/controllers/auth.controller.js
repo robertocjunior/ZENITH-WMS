@@ -22,14 +22,17 @@ const login = async (req, res, next) => {
             throw new Error('Usuário não encontrado.');
         }
         const codUsu = userQueryResponse.responseBody.rows[0][0];
+        logger.info(`CODUSU ${codUsu} encontrado para o usuário ${username}.`); // LOG ADICIONADO
 
         const permAppResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT NUMREG FROM AD_APPPERM WHERE CODUSU = ${codUsu}`
         });
         if (permAppResponse.status !== '1' || !permAppResponse.responseBody?.rows.length) {
+            logger.warn(`Login bloqueado para ${username} (CODUSU: ${codUsu}). Usuário não encontrado na AD_APPPERM.`); // LOG ADICIONADO
             throw new Error('Usuário não possui permissão para acessar este aplicativo.');
         }
         const numReg = permAppResponse.responseBody.rows[0][0];
+        logger.info(`NUMREG ${numReg} encontrado para o CODUSU ${codUsu}.`); // LOG ADICIONADO
         
         let finalDeviceToken = clientDeviceToken;
         let deviceIsAuthorized = false;
@@ -41,6 +44,7 @@ const login = async (req, res, next) => {
             if (deviceCheckResponse.responseBody?.rows.length > 0) {
                 if (deviceCheckResponse.responseBody.rows[0][0] === 'S') {
                     deviceIsAuthorized = true;
+                    logger.info(`Dispositivo ${clientDeviceToken} autorizado para CODUSU ${codUsu}.`); // LOG ADICIONADO
                 } else {
                     return res.status(403).json({ message: 'Este dispositivo está registrado, mas não está ativo.', deviceToken: clientDeviceToken });
                 }
@@ -58,6 +62,7 @@ const login = async (req, res, next) => {
             });
             if (saveResponse.status !== '1') throw new Error(saveResponse.statusMessage || 'Falha ao tentar registrar o novo dispositivo.');
 
+            logger.info(`Dispositivo novo ${finalDeviceToken} registrado para CODUSU ${codUsu}. Aguardando autorização.`); // LOG ADICIONADO
             return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: finalDeviceToken });
         }
         
@@ -68,6 +73,7 @@ const login = async (req, res, next) => {
         if (loginResponse.status !== '1') {
             throw new Error(loginResponse.statusMessage || 'Credenciais de operador inválidas.');
         }
+        logger.info(`Senha validada com sucesso para o usuário ${username}.`); // LOG ADICIONADO
 
         const sessionPayload = { username, codusu: codUsu, numreg: numReg };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });

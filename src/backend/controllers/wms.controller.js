@@ -12,6 +12,7 @@ const checkApiResponse = (data) => {
 
 const getWarehouses = async (req, res, next) => {
     const { username, numreg } = req.userSession;
+    logger.http(`Usuário ${username} (NUMREG: ${numreg}) solicitou a lista de armazéns.`); // LOG ADICIONADO
     try {
         const sql = `SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM WHERE CODARM IN (SELECT CODARM FROM AD_PERMEND WHERE NUMREG = ${sanitizeNumber(numreg)}) ORDER BY CODARM`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
@@ -26,28 +27,32 @@ const getWarehouses = async (req, res, next) => {
 
 const getPermissions = async (req, res, next) => {
     const { username, codusu } = req.userSession;
+    logger.http(`Verificando permissões para o usuário ${username} (CODUSU: ${codusu}).`); // LOG ADICIONADO
     try {
         const sql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
         if (!data.responseBody?.rows?.length) {
+            logger.warn(`Nenhuma permissão encontrada para o usuário ${username}. Retornando acesso negado.`); // LOG ADICIONADO
             return res.json({ baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false });
         }
         const perms = data.responseBody.rows[0];
-        res.json({
+        const permissions = {
             baixa: perms[0] === 'S', transfer: perms[1] === 'S', pick: perms[2] === 'S',
             corre: perms[3] === 'S', bxaPick: perms[4] === 'S', criaPick: perms[5] === 'S',
-        });
+        };
+        logger.info(`Permissões para ${username}: Baixa=${permissions.baixa}, Transfer=${permissions.transfer}, Pick=${permissions.pick}, Corre=${permissions.corre}, BxaPick=${permissions.bxaPick}, CriaPick=${permissions.criaPick}.`); // LOG ADICIONADO
+        res.json(permissions);
     } catch (error) {
         logger.error(`Erro em getPermissions para ${username}: ${error.message}`);
         next(error);
     }
 };
 
-// FUNÇÃO searchItems QUE ESTAVA FALTANDO
 const searchItems = async (req, res, next) => {
     const { codArm, filtro } = req.body;
     const { username } = req.userSession;
+    logger.http(`Usuário ${username} buscou por '${filtro || 'todos'}' no armazém ${codArm}.`); // LOG ADICIONADO
     try {
         let sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)}`;
         let orderBy = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
@@ -80,6 +85,7 @@ const searchItems = async (req, res, next) => {
 const getItemDetails = async (req, res, next) => {
     const { codArm, sequencia } = req.body;
     const { username } = req.userSession;
+    logger.http(`Usuário ${username} solicitou detalhes da sequência ${sequencia} no armazém ${codArm}.`); // LOG ADICIONADO
     try {
         const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)} AND ENDE.SEQEND = ${sanitizeNumber(sequencia)}`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
@@ -97,6 +103,7 @@ const getItemDetails = async (req, res, next) => {
 const getPickingLocations = async (req, res, next) => {
     const { codarm, codprod, sequencia } = req.body;
     const { username } = req.userSession;
+    logger.http(`Usuário ${username} solicitou locais de picking para o produto ${codprod}.`); // LOG ADICIONADO
     try {
         const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codarm)} AND ENDE.CODPROD = ${sanitizeNumber(codprod)} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sanitizeNumber(sequencia)} ORDER BY ENDE.SEQEND`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
@@ -111,6 +118,7 @@ const getPickingLocations = async (req, res, next) => {
 
 const getHistory = async (req, res, next) => {
     const { username, codusu } = req.userSession;
+    logger.http(`Usuário ${username} solicitou seu histórico de hoje.`); // LOG ADICIONADO
     try {
         const hoje = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: '2-digit', day: '2-digit' });
         const sql = `
@@ -152,6 +160,7 @@ const executeTransaction = async (req, res, next) => {
 			(type === 'correcao' && perms[3] === 'S');
 
 		if (!hasPermission) {
+            logger.warn(`Tentativa de execução de '${type}' bloqueada por falta de permissão para ${username}.`); // LOG ADICIONADO
 			return res.status(403).json({ message: 'Você não tem permissão para executar esta ação.' });
 		}
 
@@ -169,6 +178,7 @@ const executeTransaction = async (req, res, next) => {
             const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU', 'DTHOPER'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu, 9: new Date() }}]};
 			await callSankhyaService('DatasetSP.save', histRecord);
 			
+            logger.info(`Histórico de correção salvo para SEQEND ${sequencia}.`); // LOG ADICIONADO
             return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
 		}
 
@@ -183,6 +193,7 @@ const executeTransaction = async (req, res, next) => {
 			throw new Error(cabecalhoData.statusMessage || 'Falha ao criar cabeçalho da transação.');
 		}
 		const seqBai = cabecalhoData.responseBody.result[0][0];
+        logger.info(`Cabeçalho da transação ${seqBai} criado para o usuário ${username} (USUGER: ${codusu}).`); // LOG ADICIONADO
 
 		let recordsToSave = [];
 		if (type === 'baixa') {
@@ -229,6 +240,7 @@ const executeTransaction = async (req, res, next) => {
 			});
 			checkApiResponse(itemData);
 		}
+        logger.info(`${recordsToSave.length} item(ns) salvos para a transação ${seqBai}.`); // LOG ADICIONADO
 
 		const pollSql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
 		let isPopulated = false;
@@ -240,6 +252,7 @@ const executeTransaction = async (req, res, next) => {
 			await new Promise((resolve) => setTimeout(resolve, 500));
 		}
 		if (!isPopulated) throw new Error('Timeout: O sistema não populou o CODPROD a tempo.');
+        logger.info(`Polling de CODPROD bem-sucedido para a transação ${seqBai}.`); // LOG ADICIONADO
 
 		const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', {
 			stpCall: {
@@ -251,7 +264,7 @@ const executeTransaction = async (req, res, next) => {
 		if (stpData.status !== '1' && stpData.status !== '2') {
 			throw new Error(stpData.statusMessage || 'Falha ao executar a procedure de baixa.');
 		}
-
+        logger.info(`Transação ${type} (SEQBAI: ${seqBai}) finalizada com sucesso para o usuário ${username}.`); // LOG ADICIONADO
 		res.json({ message: stpData.statusMessage || 'Operação concluída com sucesso!' });
 	} catch (error) {
 		logger.error(`Erro em /execute-transaction para o usuário ${username}: ${error.message}`);
