@@ -24,7 +24,7 @@ module.exports = {
        "NODE_ENV": "production",
        // Você pode adicionar outras variáveis de ambiente aqui se precisar
        // Ex: "PORT": 8080
-       "PORT": 3000
+       "PORT": 3030
     }
   }]
 };
