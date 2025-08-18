@@ -12,7 +12,8 @@ const router = express.Router();
 router.post('/login', validate(loginSchema), login);
 router.post('/logout', authenticateToken, logout); // Logout precisa de token para invalidar a sessão correta
 
-// Rotas protegidas do WMS
-router.use('/', wmsRoutes);
+// --- LINHA MODIFICADA ---
+// Agora, todas as rotas de wmsRoutes são protegidas e exigem um token válido.
+router.use('/', authenticateToken, wmsRoutes);
 
 module.exports = router;
