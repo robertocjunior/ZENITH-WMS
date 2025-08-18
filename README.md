@@ -101,4 +101,4 @@ pm2 save
 ```
 
 
-<a href="./docs/zenith.svg">Clique aqui para visitar a documentação da API</a>
+## <a href="./docs/API.md">Clique aqui para visitar a documentação da API</a>
