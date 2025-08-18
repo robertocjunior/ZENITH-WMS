@@ -99,3 +99,6 @@ Configurar reinicialização automática:
 pm2 startup
 pm2 save
 ```
+
+
+<a href="./docs/zenith.svg">Clique aqui para visitar a documentação da API</a>
