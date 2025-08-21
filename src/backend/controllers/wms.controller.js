@@ -176,7 +176,8 @@ const executeTransaction = async (req, res, next) => {
             
             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
             
-            const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU', 'DTHOPER'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu, 9: new Date() }}]};
+            // --- LINHA MODIFICADA ---
+            const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu }}]};
             
             await callSankhyaService('DatasetSP.save', histRecord);
             
@@ -189,7 +190,7 @@ const executeTransaction = async (req, res, next) => {
         const cabecalhoData = await callSankhyaService('DatasetSP.save', {
             entityName: 'AD_BXAEND',
             fields: ['SEQBAI', 'DATGER', 'USUGER'],
-            records: [{ values: { 1: hoje, 2: codusu.toString() } }], // MODIFICADO: Adicionado .toString()
+            records: [{ values: { 1: hoje, 2: codusu.toString() } }],
         });
 
         checkApiResponse(cabecalhoData);
