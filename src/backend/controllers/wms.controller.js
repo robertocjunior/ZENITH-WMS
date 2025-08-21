@@ -176,7 +176,6 @@ const executeTransaction = async (req, res, next) => {
             
             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
             
-            // --- LINHA MODIFICADA ---
             const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu }}]};
             
             await callSankhyaService('DatasetSP.save', histRecord);
@@ -271,8 +270,18 @@ const executeTransaction = async (req, res, next) => {
         }
         logger.info(`Transação ${type} (SEQBAI: ${seqBai}) finalizada com sucesso para o usuário ${username}.`);
         res.json({ message: stpData.statusMessage || 'Operação concluída com sucesso!' });
+
     } catch (error) {
         logger.error(`Erro em /execute-transaction para o usuário ${username}: ${error.message}`);
+        // --- LÓGICA DE ERRO MODIFICADA ---
+        // Se o erro for "Não autorizado", instrui o frontend a refazer o login.
+        if (error.message && error.message.includes('Não autorizado')) {
+            return res.status(401).json({
+                message: "Sua sessão no sistema Sankhya expirou. Por favor, faça o login novamente para continuar.",
+                reauthRequired: true // Um sinalizador para o frontend saber o que fazer
+            });
+        }
+        // Para todos os outros erros, continua com o fluxo normal.
         next(error);
     }
 };
