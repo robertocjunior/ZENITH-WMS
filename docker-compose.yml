@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: wms-zenith
+    ports:
+      - "3030:3030"
+    volumes:
+      - .:/app
+    restart: always
+    env_file:
+      - .env
+    command: pm2-runtime ecosystem.config.js --env production
