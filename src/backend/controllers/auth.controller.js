@@ -33,39 +33,39 @@ const login = async (req, res, next) => {
         const numReg = permAppResponse.responseBody.rows[0][0];
         logger.info(`NUMREG ${numReg} encontrado para o CODUSU ${codUsu}.`);
 
-        // --- 2. Lógica de Dispositivo SEPARADA para Web e API ---
+        // --- 2. Lógica de Dispositivo ---
 
-        // FLUXO A: Requisição veio da API/Postman (com deviceToken)
-        if (clientDeviceToken) {
-            const deviceCheckSql = `SELECT ATIVO FROM AD_DISPAUT WHERE CODUSU = ${codUsu} AND DEVICETOKEN = '${sanitizeStringForSql(clientDeviceToken)}'`;
-            const deviceCheckResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: deviceCheckSql });
+        const descrDisp = req.headers['user-agent']?.substring(0, 100) || 'Dispositivo Web';
+        let deviceTokenToUse = clientDeviceToken;
 
-            if (!deviceCheckResponse.responseBody?.rows.length) {
-                logger.warn(`Acesso negado: Dispositivo ${clientDeviceToken} não autorizado para CODUSU ${codUsu}.`);
-                return res.status(403).json({ message: 'Dispositivo não autorizado.' });
-            }
+        // Se não houver deviceToken na requisição, crie um
+        if (!clientDeviceToken) {
+            deviceTokenToUse = crypto.randomBytes(20).toString('hex');
+            logger.info('Requisição sem deviceToken. Criando um novo para registro.');
+        }
 
-            const isDeviceActive = deviceCheckResponse.responseBody.rows[0][0] === 'S';
-            if (!isDeviceActive) {
-                return res.status(403).json({ message: 'Este dispositivo está registrado, mas não está ativo.', deviceToken: clientDeviceToken });
-            }
+        // --- 2.1. Verifica e Registra o Dispositivo na AD_DISPAUT ---
+        const deviceCheckSql = `SELECT ATIVO FROM AD_DISPAUT WHERE CODUSU = ${codUsu} AND DEVICETOKEN = '${sanitizeStringForSql(deviceTokenToUse)}'`;
+        const deviceCheckResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: deviceCheckSql });
 
-            logger.info(`Dispositivo ${clientDeviceToken} autorizado para CODUSU ${codUsu}.`);
-
-        } else {
-            // FLUXO B: Requisição veio da Interface Web (sem deviceToken)
-            const newDeviceToken = crypto.randomBytes(20).toString('hex');
-            const descrDisp = req.headers['user-agent']?.substring(0, 100) || 'Dispositivo Web';
-
+        // Se o dispositivo não for encontrado, registra um novo.
+        if (!deviceCheckResponse.responseBody?.rows.length) {
             await callSankhyaService('DatasetSP.save', {
                 entityName: 'AD_DISPAUT',
                 fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
-                records: [{ values: { 0: codUsu, 1: newDeviceToken, 2: sanitizeStringForSql(descrDisp), 3: 'N', 4: new Date().toLocaleDateString('pt-BR') } }],
+                records: [{ values: { 0: codUsu, 1: deviceTokenToUse, 2: sanitizeStringForSql(descrDisp), 3: 'N', 4: new Date().toLocaleDateString('pt-BR') } }],
             });
 
-            logger.info(`Dispositivo novo ${newDeviceToken} registrado para CODUSU ${codUsu} via Web. Aguardando autorização.`);
-            return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: newDeviceToken });
+            logger.info(`Dispositivo novo ${deviceTokenToUse} registrado para CODUSU ${codUsu}. Aguardando autorização.`);
+            return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: deviceTokenToUse });
         }
+
+        const isDeviceActive = deviceCheckResponse.responseBody.rows[0][0] === 'S';
+        if (!isDeviceActive) {
+            return res.status(403).json({ message: 'Este dispositivo está registrado, mas não está ativo.', deviceToken: deviceTokenToUse });
+        }
+
+        logger.info(`Dispositivo ${deviceTokenToUse} autorizado para CODUSU ${codUsu}.`);
 
         // --- 3. Validação de Senha ---
         const loginResponse = await callSankhyaService('MobileLoginSP.login', {
@@ -95,7 +95,7 @@ const login = async (req, res, next) => {
             username: username,
             codusu: codUsu,
             numreg: numReg,
-            deviceToken: clientDeviceToken,
+            deviceToken: deviceTokenToUse,
             sessionToken: sessionToken
         });
 
