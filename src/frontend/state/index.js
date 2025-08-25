@@ -1,55 +1,67 @@
 // src/frontend/state/index.js
 
-// Estado reativo simples da aplicação
-const State = {
-    username: localStorage.getItem('username') || null,
-    codusu: localStorage.getItem('codusu') || null,
-    numreg: localStorage.getItem('numreg') || null,
-    currentItemDetails: null,
-    permissions: {
-        baixa: false,
-        transfer: false,
-        pick: false,
-        corre: false,
-        bxaPick: false,
-        criaPick: false,
-    },
+// Este objeto irá guardar o estado da aplicação em memória
+let state = {
+    currentUser: null,
+    permissions: null,
+    currentItem: null,
 };
 
+// Tenta carregar a sessão do usuário do sessionStorage ao iniciar
+function loadSession() {
+    try {
+        const storedUser = sessionStorage.getItem('zenith_user_session');
+        if (storedUser) {
+            state.currentUser = JSON.parse(storedUser);
+        }
+    } catch (e) {
+        console.error("Falha ao carregar sessão do usuário:", e);
+        sessionStorage.removeItem('zenith_user_session');
+    }
+}
+
+// Chama a função para carregar a sessão assim que o arquivo é lido
+loadSession();
+
+// Exporta o objeto AppState com todas as funções necessárias
 export const AppState = {
-    // Getter para verificar se o usuário está logado
-    isUserLoggedIn: () => !!State.username,
-
-    // Getters para dados do estado
-    getCurrentUser: () => ({ username: State.username, codusu: State.codusu }),
-    getCurrentItem: () => State.currentItemDetails,
-    getPermissions: () => State.permissions,
-
-    // Setters para modificar o estado
-    setUserSession: (sessionData) => {
-        State.username = sessionData.username;
-        State.codusu = sessionData.codusu;
-        State.numreg = sessionData.numreg;
-        localStorage.setItem('username', sessionData.username);
-        localStorage.setItem('codusu', sessionData.codusu);
-        localStorage.setItem('numreg', sessionData.numreg);
-    },
-    
-    clearUserSession: () => {
-        State.username = null;
-        State.codusu = null;
-        State.numreg = null;
-        State.currentItemDetails = null;
-        localStorage.removeItem('username');
-        localStorage.removeItem('codusu');
-        localStorage.removeItem('numreg');
+    // Salva os dados do usuário no estado e no sessionStorage
+    setUserSession(userData) {
+        state.currentUser = userData;
+        sessionStorage.setItem('zenith_user_session', JSON.stringify(userData));
     },
 
-    setCurrentItem: (item) => {
-        State.currentItemDetails = item;
+    // Limpa a sessão do usuário
+    clearUserSession() {
+        state.currentUser = null;
+        state.permissions = null;
+        state.currentItem = null;
+        sessionStorage.removeItem('zenith_user_session');
     },
-    
-    setPermissions: (perms) => {
-        State.permissions = { ...State.permissions, ...perms };
+
+    // Retorna os dados do usuário logado
+    getCurrentUser() {
+        return state.currentUser;
     },
+
+    // Verifica se há um usuário logado
+    isUserLoggedIn() {
+        return !!state.currentUser;
+    },
+
+    // Define e retorna as permissões
+    setPermissions(perms) {
+        state.permissions = perms;
+    },
+    getPermissions() {
+        return state.permissions;
+    },
+
+    // Define e retorna o item selecionado (para a tela de detalhes)
+    setCurrentItem(item) {
+        state.currentItem = item;
+    },
+    getCurrentItem() {
+        return state.currentItem;
+    }
 };

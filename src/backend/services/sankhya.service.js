@@ -77,10 +77,14 @@ async function callSankhyaService(serviceName, requestBody) {
 			{ headers: { Authorization: `Bearer ${token}` } }
 		);
 		const responseData = response.data;
+		
+        // --- LÓGICA DE RETENTATIVA MODIFICADA ---
 		const isTokenExpiredError = responseData.error?.descricao?.includes("Bearer Token inválido ou Expirado");
 		const isNotLoggedInError = responseData.status === '0' && responseData.statusMessage?.includes("Usuário não logado");
-		if (isTokenExpiredError || isNotLoggedInError) {
-			logger.warn(`Token de sistema inválido (em resposta OK). Forçando renovação...`);
+        const isUnauthorizedError = responseData.status === '0' && responseData.statusMessage?.includes("Não autorizado");
+
+		if (isTokenExpiredError || isNotLoggedInError || isUnauthorizedError) {
+			logger.warn(`Token de sistema inválido ou não autorizado. Forçando renovação... (Mensagem: ${responseData.statusMessage || 'Token Expirado'})`);
 			token = await getSystemBearerToken(true);
 			const retryResponse = await axios.post(url, { requestBody }, { headers: { Authorization: `Bearer ${token}` } });
 			logger.info('Requisição reenviada com sucesso após renovação do token.');
@@ -90,10 +94,14 @@ async function callSankhyaService(serviceName, requestBody) {
 	} catch (error) {
 		if (error.response && error.response.data) {
 			const errorData = error.response.data;
+
+            // --- LÓGICA DE RETENTATIVA MODIFICADA ---
 			const isTokenExpiredError = errorData.error?.descricao?.includes("Bearer Token inválido ou Expirado");
 			const isNotLoggedInError = errorData.status === '0' && errorData.statusMessage?.includes("Usuário não logado");
-			if (isTokenExpiredError || isNotLoggedInError) {
-				logger.warn(`Token de sistema inválido (em resposta de erro HTTP ${error.response.status}). Forçando renovação...`);
+            const isUnauthorizedError = errorData.status === '0' && errorData.statusMessage?.includes("Não autorizado");
+
+			if (isTokenExpiredError || isNotLoggedInError || isUnauthorizedError) {
+				logger.warn(`Token de sistema inválido ou não autorizado (em resposta de erro HTTP ${error.response.status}). Forçando renovação... (Mensagem: ${errorData.statusMessage || 'Token Expirado'})`);
 				token = await getSystemBearerToken(true);
 				try {
 					const retryResponse = await axios.post(url, { requestBody }, { headers: { Authorization: `Bearer ${token}` } });
