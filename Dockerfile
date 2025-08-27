@@ -13,7 +13,7 @@ WORKDIR /app
 ARG GITHUB_TOKEN
 
 # Clona o repositório privado usando o token e vai para a branch correta
-RUN git clone https://${GITHUB_TOKEN}@github.com/robertocjunior/ZENITH-WMS.git --branch container-docker .
+RUN git clone https://${GITHUB_TOKEN}@github.com/robertocjunior/ZENITH-WMS.git --branch main .
 
 # Instala as dependências do projeto
 RUN npm install
