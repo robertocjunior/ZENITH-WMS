@@ -1,42 +1,32 @@
-# docker-compose.yml
 version: '3.8'
+
+# AVISO: Este arquivo contém segredos (token do GitHub e credenciais da aplicação).
+# Não o compartilhe e não o envie para um repositório Git.
 
 services:
   app:
-    # A seção 'build' agora passa o token como um argumento para o Dockerfile
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # Passa o valor da variável GITHUB_TOKEN para o argumento GITHUB_TOKEN no Dockerfile
-        - GITHUB_TOKEN=${GITHUB_TOKEN}
-        
     container_name: wms-zenith
+    
+    # Aponta diretamente para o seu repositório privado no GitHub.
+    # O Docker irá clonar o código, encontrar o Dockerfile e construir a imagem.
+    build:
+      context: https://SEU_TOKEN_DO_GITHUB_AQUI@github.com/robertocjunior/ZENITH-WMS.git#container-docker
+      
     ports:
       - "3030:3030"
     restart: always
     
-    # REMOVIDO: A seção 'volumes' foi removida. O código agora vive dentro da imagem.
-    # volumes:
-    #   - .:/app
-    
-    # ADICIONADO: Todas as variáveis, incluindo o token do GitHub, ficam aqui.
-    # PREENCHA OS VALORES EM BRANCO COM SUAS CREDENCIAIS.
+    # Todas as variáveis de ambiente da sua aplicação ficam definidas aqui.
     environment:
-      # Token do GitHub (necessário para o build)
-      - GITHUB_TOKEN=SEU_TOKEN_DE_ACESSO_PESSOAL_DO_GITHUB_AQUI
-      
-      # Endereço da API
-      - SANKHYA_API_URL=https://api.sankhya.com.br
-      
-      # Credenciais de autenticação
-      - SANKHYA_APPKEY=SEU_APPKEY_AQUI
-      - SANKHYA_TOKEN=SEU_TOKEN_AQUI
-      - SANKHYA_USERNAME=SEU_USERNAME_AQUI
-      - SANKHYA_PASSWORD=SUA_SENHA_AQUI
+      # Credenciais de autenticação da aplicação
+      SANKHYA_API_URL: https://api.sandbox.sankhya.com.br
+      SANKHYA_APPKEY: SUA_CHAVE_DE_APPKEY_AQUI
+      SANKHYA_TOKEN: SEU_TOKEN_SANKHYA_AQUI
+      SANKHYA_USERNAME: SEU_USUARIO_SANKHYA_AQUI
+      SANKHYA_PASSWORD: SUA_SENHA_SANKHYA_AQUI
       
       # Chave secreta da sessão
-      - JWT_SECRET=SEU_JWT_SECRET_AQUI
+      JWT_SECRET: SUA_CHAVE_JWT_SECRET_AQUI
       
       # Porta do servidor
-      - PORT=3030
+      PORT: 3030
