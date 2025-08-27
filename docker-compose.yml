@@ -1,0 +1,17 @@
+# docker-compose.yml
+services:
+  app:
+    container_name: wms-zenith
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Lê a variável GITHUB_TOKEN do arquivo .env e a passa para o Dockerfile
+        - GITHUB_TOKEN=${GITHUB_TOKEN}
+    ports:
+      # Mapeia a porta definida no .env para a porta do host
+      - "${PORT}:${PORT}"
+    restart: always
+    # Aponta para o arquivo .env para carregar TODAS as variáveis no container
+    env_file:
+      - .env
