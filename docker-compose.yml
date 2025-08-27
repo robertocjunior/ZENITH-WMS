@@ -1,3 +1,4 @@
+# docker-compose.yml
 version: '3.8'
 
 services:
@@ -5,10 +6,29 @@ services:
     build: .
     container_name: wms-zenith
     ports:
-      - "3030:3030"
+      - "3030:3030" # A porta no seu .env de exemplo era 3000, ajuste se necessário
     volumes:
       - .:/app
     restart: always
-    env_file:
-      - .env
-    command: pm2-runtime ecosystem.config.js --env production
+    
+    # REMOVIDO:
+    # env_file:
+    #   - .env
+      
+    # ADICIONADO:
+    # Insira suas variáveis de ambiente diretamente aqui.
+    environment:
+      # Endereço da API
+      - SANKHYA_API_URL=https://api.sankhya.com.br
+      
+      # Credenciais de autenticação
+      - SANKHYA_APPKEY=
+      - SANKHYA_TOKEN=
+      - SANKHYA_USERNAME=
+      - SANKHYA_PASSWORD=
+      
+      # Chave secreta da sessão
+      - JWT_SECRET=
+      
+      # Porta do servidor
+      - PORT=3030
