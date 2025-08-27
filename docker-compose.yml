@@ -1,32 +1,17 @@
-version: '3.8'
-
-# AVISO: Este arquivo contém segredos (token do GitHub e credenciais da aplicação).
-# Não o compartilhe e não o envie para um repositório Git.
-
+# docker-compose.yml
 services:
   app:
     container_name: wms-zenith
-    
-    # Aponta diretamente para o seu repositório privado no GitHub.
-    # O Docker irá clonar o código, encontrar o Dockerfile e construir a imagem.
     build:
-      context: https://SEU_TOKEN_DO_GITHUB_AQUI@github.com/robertocjunior/ZENITH-WMS.git#container-docker
-      
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Lê a variável GITHUB_TOKEN do arquivo .env e a passa para o Dockerfile
+        - GITHUB_TOKEN=${GITHUB_TOKEN}
     ports:
-      - "3030:3030"
+      # Mapeia a porta definida no .env para a porta do host
+      - "${PORT}:${PORT}"
     restart: always
-    
-    # Todas as variáveis de ambiente da sua aplicação ficam definidas aqui.
-    environment:
-      # Credenciais de autenticação da aplicação
-      SANKHYA_API_URL: https://api.sandbox.sankhya.com.br
-      SANKHYA_APPKEY: SUA_CHAVE_DE_APPKEY_AQUI
-      SANKHYA_TOKEN: SEU_TOKEN_SANKHYA_AQUI
-      SANKHYA_USERNAME: SEU_USUARIO_SANKHYA_AQUI
-      SANKHYA_PASSWORD: SUA_SENHA_SANKHYA_AQUI
-      
-      # Chave secreta da sessão
-      JWT_SECRET: SUA_CHAVE_JWT_SECRET_AQUI
-      
-      # Porta do servidor
-      PORT: 3030
+    # Aponta para o arquivo .env para carregar TODAS as variáveis no container
+    env_file:
+      - .env

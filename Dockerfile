@@ -13,14 +13,13 @@ WORKDIR /app
 ARG GITHUB_TOKEN
 
 # Clona o repositório privado usando o token e vai para a branch correta
-# Se o GITHUB_TOKEN não for passado, o build irá falhar.
 RUN git clone https://${GITHUB_TOKEN}@github.com/robertocjunior/ZENITH-WMS.git --branch container-docker .
 
 # Instala as dependências do projeto
 RUN npm install
 
 # Expõe a porta que a aplicação vai utilizar
-EXPOSE 3030
+EXPOSE 3080
 
 # Instala o PM2 globalmente e inicia a aplicação
 RUN npm install pm2 -g
