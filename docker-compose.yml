@@ -3,32 +3,40 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    # A seção 'build' agora passa o token como um argumento para o Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Passa o valor da variável GITHUB_TOKEN para o argumento GITHUB_TOKEN no Dockerfile
+        - GITHUB_TOKEN=${GITHUB_TOKEN}
+        
     container_name: wms-zenith
     ports:
-      - "3030:3030" # A porta no seu .env de exemplo era 3000, ajuste se necessário
-    volumes:
-      - .:/app
+      - "3030:3030"
     restart: always
     
-    # REMOVIDO:
-    # env_file:
-    #   - .env
-      
-    # ADICIONADO:
-    # Insira suas variáveis de ambiente diretamente aqui.
+    # REMOVIDO: A seção 'volumes' foi removida. O código agora vive dentro da imagem.
+    # volumes:
+    #   - .:/app
+    
+    # ADICIONADO: Todas as variáveis, incluindo o token do GitHub, ficam aqui.
+    # PREENCHA OS VALORES EM BRANCO COM SUAS CREDENCIAIS.
     environment:
+      # Token do GitHub (necessário para o build)
+      - GITHUB_TOKEN=SEU_TOKEN_DE_ACESSO_PESSOAL_DO_GITHUB_AQUI
+      
       # Endereço da API
       - SANKHYA_API_URL=https://api.sankhya.com.br
       
       # Credenciais de autenticação
-      - SANKHYA_APPKEY=
-      - SANKHYA_TOKEN=
-      - SANKHYA_USERNAME=
-      - SANKHYA_PASSWORD=
+      - SANKHYA_APPKEY=SEU_APPKEY_AQUI
+      - SANKHYA_TOKEN=SEU_TOKEN_AQUI
+      - SANKHYA_USERNAME=SEU_USERNAME_AQUI
+      - SANKHYA_PASSWORD=SUA_SENHA_AQUI
       
       # Chave secreta da sessão
-      - JWT_SECRET=
+      - JWT_SECRET=SEU_JWT_SECRET_AQUI
       
       # Porta do servidor
       - PORT=3030

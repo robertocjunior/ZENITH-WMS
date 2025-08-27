@@ -1,21 +1,25 @@
-# Usa a imagem oficial do Node.js baseada em Alpine, que é menor e mais segura
+# Usa a imagem oficial do Node.js baseada em Alpine [cite: 1]
 FROM node:18-alpine
 
-# Define o diretório de trabalho dentro do container
+# Instala o Git para poder clonar o repositório
+RUN apk add --no-cache git
+
+# Define o diretório de trabalho dentro do container [cite: 1]
 WORKDIR /app
 
-# Copia os arquivos de pacotes para o diretório de trabalho
-COPY package*.json ./
+# Declara um argumento de build que receberá o token do GitHub
+ARG GITHUB_TOKEN
 
-# Instala as dependências do projeto
+# Clona o repositório privado usando o token e vai para a branch correta
+# Se o GITHUB_TOKEN não for passado, o build irá falhar.
+RUN git clone https://${GITHUB_TOKEN}@github.com/robertocjunior/ZENITH-WMS.git --branch container-docker .
+
+# Instala as dependências do projeto [cite: 1]
 RUN npm install
 
-# Copia todos os outros arquivos do projeto para o diretório de trabalho
-COPY . .
-
-# Expõe a porta que a aplicação vai utilizar
+# Expõe a porta que a aplicação vai utilizar [cite: 2]
 EXPOSE 3030
 
-# Instala o PM2 globalmente e inicia a aplicação usando o pm2-runtime
+# Instala o PM2 globalmente e inicia a aplicação [cite: 2]
 RUN npm install pm2 -g
 CMD ["pm2-runtime", "ecosystem.config.js", "--env", "production"]
