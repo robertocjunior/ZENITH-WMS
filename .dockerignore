@@ -1,0 +1,22 @@
+# Arquivos do Git
+.git
+.gitignore
+
+# Arquivos do Docker
+.dockerignore
+
+# Arquivos e pastas do seu projeto a serem ignorados
+teste.env
+docs/
+generatekeys.py
+Relatórios/
+sql/
+Telas Sankhya/
+
+# Dependências do Node (devem ser instaladas dentro do container)
+node_modules/
+
+# Logs e arquivos de build local
+dist/
+logs/
+npm-debug.log
