@@ -6,7 +6,7 @@ module.exports = {
     // --- Melhorias para Produção ---
 
     // Habilita o modo cluster para usar todos os núcleos de CPU disponíveis
-    instances: "max",
+    instances: -1,
     exec_mode: "cluster",
 
     // Reinicia a aplicação se ela atingir 1GB de memória (previne vazamentos de memória)
