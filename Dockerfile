@@ -23,4 +23,4 @@ EXPOSE 3080
 
 # Instala o PM2 globalmente e inicia a aplicação
 RUN npm install pm2 -g
-CMD ["pm2-runtime", "ecosystem.config.js", "--env", "production"]
+CMD ["pm2-runtime", "ecosystem.config.js"]
