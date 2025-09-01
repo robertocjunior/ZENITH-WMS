@@ -34,21 +34,17 @@ const login = async (req, res, next) => {
         logger.info(`NUMREG ${numReg} encontrado para o CODUSU ${codUsu}.`);
 
         // --- 2. Lógica de Dispositivo ---
-
         const descrDisp = req.headers['user-agent']?.substring(0, 100) || 'Dispositivo Web';
         let deviceTokenToUse = clientDeviceToken;
 
-        // Se não houver deviceToken na requisição, crie um
         if (!clientDeviceToken) {
             deviceTokenToUse = crypto.randomBytes(20).toString('hex');
             logger.info('Requisição sem deviceToken. Criando um novo para registro.');
         }
 
-        // --- 2.1. Verifica e Registra o Dispositivo na AD_DISPAUT ---
         const deviceCheckSql = `SELECT ATIVO FROM AD_DISPAUT WHERE CODUSU = ${codUsu} AND DEVICETOKEN = '${sanitizeStringForSql(deviceTokenToUse)}'`;
         const deviceCheckResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: deviceCheckSql });
 
-        // Se o dispositivo não for encontrado, registra um novo.
         if (!deviceCheckResponse.responseBody?.rows.length) {
             await callSankhyaService('DatasetSP.save', {
                 entityName: 'AD_DISPAUT',
@@ -87,16 +83,23 @@ const login = async (req, res, next) => {
             sameSite: 'strict',
             maxAge: 8 * 60 * 60 * 1000,
         });
+        
+        // --- MODIFICAÇÃO: Verificação do ambiente ---
+        const isTestEnvironment = process.env.SANKHYA_API_URL === 'https://api.sandbox.sankhya.com.br';
+        if (isTestEnvironment) {
+            logger.warn('Atenção: A API está conectada ao ambiente de SANDBOX (TESTES).');
+        }
 
         logger.info(`Usuário ${username} logado com sucesso.`);
         
-        // --- RESPOSTA MODIFICADA PARA O FORMATO SOLICITADO ---
+        // --- MODIFICAÇÃO: Resposta final com a nova flag ---
         res.json({
             username: username,
             codusu: codUsu,
             numreg: numReg,
             deviceToken: deviceTokenToUse,
-            sessionToken: sessionToken
+            sessionToken: sessionToken,
+            isTestEnvironment: isTestEnvironment // <--- PARÂMETRO ADICIONADO
         });
 
     } catch (error) {
