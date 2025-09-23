@@ -70,24 +70,47 @@ const searchItems = async (req, res, next) => {
     const { username } = req.userSession;
     logger.http(`Usuário ${username} buscou por '${filtro || 'todos'}' no armazém ${codArm}.`);
     try {
-        let sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)}`;
-        let orderBy = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
+        // Usamos uma CTE (WITH clause) para primeiro calcular a DERIVACAO
+        // e depois poder filtrar por ela no WHERE da consulta principal.
+        let sql = `
+            WITH ITENS_COM_DERIVACAO AS (
+                SELECT
+                    ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD,
+                    PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC,
+                    TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA,
+                    (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO,
+                    ENDE.CODARM
+                FROM AD_CADEND ENDE
+                JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD
+            )
+            SELECT * FROM ITENS_COM_DERIVACAO
+            WHERE CODARM = ${sanitizeNumber(codArm)}
+        `;
+
+        let orderBy = ' ORDER BY ENDPIC DESC, DATVAL ASC';
+
         if (filtro) {
             const filtroLimpo = filtro.trim();
             if (/^\d+$/.test(filtroLimpo)) {
                 const filtroNum = sanitizeNumber(filtroLimpo);
-                sql += ` AND (ENDE.SEQEND LIKE '${sanitizeStringForSql(filtroLimpo)}%' OR ENDE.CODPROD = ${filtroNum} OR ENDE.CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroNum} AND CODARM = ${sanitizeNumber(codArm)} AND ROWNUM = 1))`;
-                orderBy = ` ORDER BY CASE WHEN ENDE.SEQEND = ${filtroNum} THEN 0 ELSE 1 END, ENDE.ENDPIC DESC, ENDE.DATVAL ASC`;
+                sql += ` AND (SEQEND LIKE '${sanitizeStringForSql(filtroLimpo)}%' OR CODPROD = ${filtroNum} OR CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroNum} AND CODARM = ${sanitizeNumber(codArm)} AND ROWNUM = 1))`;
+                orderBy = ` ORDER BY CASE WHEN SEQEND = ${filtroNum} THEN 0 ELSE 1 END, ENDPIC DESC, DATVAL ASC`;
             } else {
                 const removerAcentos = (texto) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
                 const palavrasChave = removerAcentos(filtroLimpo).split(' ').filter(p => p.length > 0);
                 const condicoes = palavrasChave.map(palavra => {
                     const palavraUpper = sanitizeStringForSql(palavra.toUpperCase());
-                    return `(TRANSLATE(UPPER(PRO.DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%' OR TRANSLATE(UPPER(PRO.MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%')`;
+                    // Adicionamos a verificação no campo DERIVACAO
+                    return `(
+                        TRANSLATE(UPPER(DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%' OR
+                        TRANSLATE(UPPER(MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%' OR
+                        TRANSLATE(UPPER(DERIVACAO), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%'
+                    )`;
                 });
                 if (condicoes.length > 0) sql += ` AND ${condicoes.join(' AND ')}`;
             }
         }
+
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: sql + orderBy });
         checkApiResponse(data);
         if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
