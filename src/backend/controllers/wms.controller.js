@@ -183,6 +183,21 @@ const executeTransaction = async (req, res, next) => {
     const { type, payload } = req.body;
     const { username, codusu } = req.userSession;
     logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
+    
+    // Função para formatar a quantidade para o padrão da API
+    const formatQuantityForSankhya = (quantity) => {
+        // Converte para string e substitui vírgula por ponto para normalizar a entrada
+        const normalizedString = String(quantity).replace(',', '.');
+        const number = parseFloat(normalizedString);
+
+        if (isNaN(number)) {
+            // Se a entrada não for um número válido, retorna um padrão seguro com ponto
+            return '0.000';
+        }
+        
+        // ALTERADO: Retorna o número como string com 3 casas decimais e PONTO como separador
+        return number.toFixed(3);
+    };
 
     try {
         const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
@@ -243,7 +258,7 @@ const executeTransaction = async (req, res, next) => {
             recordsToSave.push({
                 entityName: 'AD_IBXEND',
                 fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
-                values: { 2: payload.codarm.toString(), 3: payload.sequencia.toString(), 4: payload.quantidade.toString(), 5: 'S' },
+                values: { 2: payload.codarm.toString(), 3: payload.sequencia.toString(), 4: formatQuantityForSankhya(payload.quantidade), 5: 'S' },
             });
         } else if (type === 'transferencia' || type === 'picking') {
             const { codarm, sequencia, codprod } = payload.origem;
@@ -257,13 +272,13 @@ const executeTransaction = async (req, res, next) => {
                 recordsToSave.push({
                     entityName: 'AD_IBXEND',
                     fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
-                    values: { 2: armazemDestino.toString(), 3: enderecoDestino, 4: destinationItem[1].toString(), 5: 'S' },
+                    values: { 2: armazemDestino.toString(), 3: enderecoDestino, 4: formatQuantityForSankhya(destinationItem[1]), 5: 'S' },
                 });
             }
             recordsToSave.push({
                 entityName: 'AD_IBXEND',
                 fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'ARMDES', 'ENDDES', 'QTDPRO', 'APP'],
-                values: { 2: codarm.toString(), 3: sequencia.toString(), 4: armazemDestino.toString(), 5: enderecoDestino, 6: quantidade.toString(), 7: 'S' },
+                values: { 2: codarm.toString(), 3: sequencia.toString(), 4: armazemDestino.toString(), 5: enderecoDestino, 6: formatQuantityForSankhya(quantidade), 7: 'S' },
             });
 
             if (type === 'transferencia' && criarPick === true && perms[5] === 'S') {
