@@ -70,7 +70,6 @@ const login = async (req, res, next) => {
         const deviceCheckResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: deviceCheckSql });
 
         if (!deviceCheckResponse.responseBody?.rows.length) {
-            // ================== BLOCO DE CÓDIGO MODIFICADO PARA DEPURAÇÃO ==================
             const savePayload = {
                 entityName: 'AD_DISPAUT',
                 fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
@@ -84,16 +83,13 @@ const login = async (req, res, next) => {
                     } 
                 }],
             };
-
-            // 1. Adicionado log para ver a resposta completa do Sankhya
+            
             const saveResponse = await callSankhyaService('DatasetSP.save', savePayload);
-            logger.info(`RESPOSTA DO SANKHYA AO SALVAR DISPOSITIVO: ${JSON.stringify(saveResponse)}`);
 
-            // 2. Adicionada verificação para gerar um erro claro se o salvamento falhar
+            // Verificação de erro mantida para robustez, mas o log explícito foi removido
             if (saveResponse.status !== '1') {
                 throw new Error(`Falha ao salvar dispositivo. Status: ${saveResponse.status} | Mensagem: ${saveResponse.statusMessage}`);
             }
-            // ==============================================================================
 
             logger.info(`Dispositivo novo ${deviceTokenToUse} registrado para CODUSU ${codUsu}. Aguardando autorização.`);
             return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: deviceTokenToUse });
