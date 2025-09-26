@@ -23,6 +23,14 @@ const { sanitizeStringForSql } = require('../utils/sanitizer');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+const formatDateForSankhya = (date) => {
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
 const login = async (req, res, next) => {
     const { username, password, deviceToken: clientDeviceToken } = req.body;
     try {
@@ -62,11 +70,30 @@ const login = async (req, res, next) => {
         const deviceCheckResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: deviceCheckSql });
 
         if (!deviceCheckResponse.responseBody?.rows.length) {
-            await callSankhyaService('DatasetSP.save', {
+            // ================== BLOCO DE CÓDIGO MODIFICADO PARA DEPURAÇÃO ==================
+            const savePayload = {
                 entityName: 'AD_DISPAUT',
                 fields: ['CODUSU', 'DEVICETOKEN', 'DESCRDISP', 'ATIVO', 'DHGER'],
-                records: [{ values: { 0: codUsu, 1: deviceTokenToUse, 2: sanitizeStringForSql(descrDisp), 3: 'N', 4: new Date().toLocaleDateString('pt-BR') } }],
-            });
+                records: [{ 
+                    values: { 
+                        0: codUsu, 
+                        1: deviceTokenToUse, 
+                        2: sanitizeStringForSql(descrDisp), 
+                        3: 'N', 
+                        4: formatDateForSankhya(new Date()) 
+                    } 
+                }],
+            };
+
+            // 1. Adicionado log para ver a resposta completa do Sankhya
+            const saveResponse = await callSankhyaService('DatasetSP.save', savePayload);
+            logger.info(`RESPOSTA DO SANKHYA AO SALVAR DISPOSITIVO: ${JSON.stringify(saveResponse)}`);
+
+            // 2. Adicionada verificação para gerar um erro claro se o salvamento falhar
+            if (saveResponse.status !== '1') {
+                throw new Error(`Falha ao salvar dispositivo. Status: ${saveResponse.status} | Mensagem: ${saveResponse.statusMessage}`);
+            }
+            // ==============================================================================
 
             logger.info(`Dispositivo novo ${deviceTokenToUse} registrado para CODUSU ${codUsu}. Aguardando autorização.`);
             return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: deviceTokenToUse });
@@ -100,7 +127,6 @@ const login = async (req, res, next) => {
             maxAge: 8 * 60 * 60 * 1000,
         });
         
-        // --- MODIFICAÇÃO: Verificação do ambiente ---
         const isTestEnvironment = process.env.SANKHYA_API_URL === 'https://api.sandbox.sankhya.com.br';
         if (isTestEnvironment) {
             logger.warn('Atenção: A API está conectada ao ambiente de SANDBOX (TESTES).');
@@ -108,14 +134,13 @@ const login = async (req, res, next) => {
 
         logger.info(`Usuário ${username} logado com sucesso.`);
         
-        // --- MODIFICAÇÃO: Resposta final com a nova flag ---
         res.json({
             username: username,
             codusu: codUsu,
             numreg: numReg,
             deviceToken: deviceTokenToUse,
             sessionToken: sessionToken,
-            isTestEnvironment: isTestEnvironment // <--- PARÂMETRO ADICIONADO
+            isTestEnvironment: isTestEnvironment
         });
 
     } catch (error) {
