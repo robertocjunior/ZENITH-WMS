@@ -65,13 +65,12 @@ const getPermissions = async (req, res, next) => {
     }
 };
 
+// RESTAURADO: Esta é a versão original e funcional da sua busca.
 const searchItems = async (req, res, next) => {
     const { codArm, filtro } = req.body;
     const { username } = req.userSession;
     logger.http(`Usuário ${username} buscou por '${filtro || 'todos'}' no armazém ${codArm}.`);
     try {
-        // Usamos uma CTE (WITH clause) para primeiro calcular a DERIVACAO
-        // e depois poder filtrar por ela no WHERE da consulta principal.
         let sql = `
             WITH ITENS_COM_DERIVACAO AS (
                 SELECT
@@ -100,7 +99,6 @@ const searchItems = async (req, res, next) => {
                 const palavrasChave = removerAcentos(filtroLimpo).split(' ').filter(p => p.length > 0);
                 const condicoes = palavrasChave.map(palavra => {
                     const palavraUpper = sanitizeStringForSql(palavra.toUpperCase());
-                    // Adicionamos a verificação no campo DERIVACAO
                     return `(
                         TRANSLATE(UPPER(DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%' OR
                         TRANSLATE(UPPER(MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%' OR
@@ -121,12 +119,13 @@ const searchItems = async (req, res, next) => {
     }
 };
 
+// ALTERADO: Esta função agora usa a VIEW, ficando mais simples e performática.
 const getItemDetails = async (req, res, next) => {
     const { codArm, sequencia } = req.body;
     const { username } = req.userSession;
     logger.http(`Usuário ${username} solicitou detalhes da sequência ${sequencia} no armazém ${codArm}.`);
     try {
-        const sql = `SELECT ENDE.CODARM, ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)} AND ENDE.SEQEND = ${sanitizeNumber(sequencia)}`;
+        const sql = `SELECT * FROM V_WMS_ITEM_DETALHES WHERE CODARM = ${sanitizeNumber(codArm)} AND SEQEND = ${sanitizeNumber(sequencia)}`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
         if (!data.responseBody?.rows?.length) {
@@ -184,18 +183,12 @@ const executeTransaction = async (req, res, next) => {
     const { username, codusu } = req.userSession;
     logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
     
-    // Função para formatar a quantidade para o padrão da API
     const formatQuantityForSankhya = (quantity) => {
-        // Converte para string e substitui vírgula por ponto para normalizar a entrada
         const normalizedString = String(quantity).replace(',', '.');
         const number = parseFloat(normalizedString);
-
         if (isNaN(number)) {
-            // Se a entrada não for um número válido, retorna um padrão seguro com ponto
             return '0.000';
         }
-        
-        // ALTERADO: Retorna o número como string com 3 casas decimais e PONTO como separador
         return number.toFixed(3);
     };
 
@@ -327,15 +320,12 @@ const executeTransaction = async (req, res, next) => {
 
     } catch (error) {
         logger.error(`Erro em /execute-transaction para o usuário ${username}: ${error.message}`);
-        // --- LÓGICA DE ERRO MODIFICADA ---
-        // Se o erro for "Não autorizado", instrui o frontend a refazer o login.
         if (error.message && error.message.includes('Não autorizado')) {
             return res.status(401).json({
                 message: "Sua sessão no sistema Sankhya expirou. Por favor, faça o login novamente para continuar.",
-                reauthRequired: true // Um sinalizador para o frontend saber o que fazer
+                reauthRequired: true
             });
         }
-        // Para todos os outros erros, continua com o fluxo normal.
         next(error);
     }
 };
