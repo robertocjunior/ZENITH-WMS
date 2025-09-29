@@ -25,7 +25,6 @@ const sendErrorEmail = async (error, req = {}) => {
         return;
     }
 
-    // ALTERADO: Lê a nova variável de ambiente com múltiplos destinatários
     const recipients = process.env.EMAIL_RECIPIENTS;
     if (!recipients) {
         logger.warn('Nenhum destinatário de e-mail configurado em EMAIL_RECIPIENTS. O e-mail de erro não será enviado.');
@@ -33,6 +32,15 @@ const sendErrorEmail = async (error, req = {}) => {
     }
 
     try {
+        // =================================================================
+        // NOVO: Lógica para identificar o ambiente
+        // =================================================================
+        const isTestEnvironment = process.env.SANKHYA_API_URL.includes('sandbox');
+        const environmentName = isTestEnvironment ? 'TESTE (Sandbox)' : 'PRODUÇÃO';
+        const environmentClass = isTestEnvironment ? 'env-teste' : 'env-prod';
+        const environmentEmoji = isTestEnvironment ? '🧪' : '🚨';
+        // =================================================================
+
         const user = req.userSession ? `${req.userSession.username} (CODUSU: ${req.userSession.codusu})` : 'N/A';
         const endpoint = req.originalUrl || 'N/A';
         const method = req.method || 'N/A';
@@ -41,6 +49,8 @@ const sendErrorEmail = async (error, req = {}) => {
         let htmlBody = emailTemplate
             .replace('{{errorMessage}}', error.message || 'Erro desconhecido')
             .replace('{{timestamp}}', new Date().toLocaleString('pt-BR'))
+            .replace('{{environment}}', environmentName) // NOVO: Adiciona o nome do ambiente
+            .replace('{{environmentClass}}', environmentClass) // NOVO: Adiciona uma classe CSS para o ambiente
             .replace('{{user}}', user)
             .replace('{{endpoint}}', `${method} ${endpoint}`)
             .replace('{{body}}', body)
@@ -48,9 +58,9 @@ const sendErrorEmail = async (error, req = {}) => {
 
         const mailOptions = {
             from: `"Alerta WMS Zenith" <${process.env.SMTP_USER}>`,
-            // ALTERADO: Usa a lista de destinatários do .env
             to: recipients,
-            subject: `🚨 Alerta de Erro no WMS Zenith: ${error.message.substring(0, 50)}`,
+            // ALTERADO: Adiciona o ambiente ao título do e-mail
+            subject: `${environmentEmoji} [${environmentName}] Alerta de Erro no WMS Zenith: ${error.message.substring(0, 40)}`,
             html: htmlBody,
         };
 
