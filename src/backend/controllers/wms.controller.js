@@ -72,26 +72,25 @@ const searchItems = async (req, res, next) => {
     logger.http(`Usuário ${username} buscou por '${filtro || 'todos'}' no armazém ${codArm}.`);
     try {
         // =================================================================
-        // ALTERADO: Trocado 'const' por 'let' para permitir a modificação da string SQL
+        // CORRIGIDO: Voltamos para a consulta SQL explícita para garantir a ordem das colunas
         // =================================================================
-        let sql = `SELECT * FROM V_WMS_ITEM_DETALHES WHERE CODARM = ${sanitizeNumber(codArm)}`;
-        let orderBy = ' ORDER BY ENDPIC DESC, DATVAL ASC';
+        let sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)}`;
+        let orderBy = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
 
         if (filtro) {
             const filtroLimpo = filtro.trim();
             if (/^\d+$/.test(filtroLimpo)) {
                 const filtroNum = sanitizeNumber(filtroLimpo);
-                sql += ` AND (SEQEND LIKE '${sanitizeStringForSql(filtroLimpo)}%' OR CODPROD = ${filtroNum} OR CODPROD = (SELECT CODPROD FROM V_WMS_ITEM_DETALHES WHERE SEQEND = ${filtroNum} AND CODARM = ${sanitizeNumber(codArm)} AND ROWNUM = 1))`;
-                orderBy = ` ORDER BY CASE WHEN SEQEND = ${filtroNum} THEN 0 ELSE 1 END, ENDPIC DESC, DATVAL ASC`;
+                sql += ` AND (ENDE.SEQEND LIKE '${sanitizeStringForSql(filtroLimpo)}%' OR ENDE.CODPROD = ${filtroNum} OR ENDE.CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroNum} AND CODARM = ${sanitizeNumber(codArm)} AND ROWNUM = 1))`;
+                orderBy = ` ORDER BY CASE WHEN ENDE.SEQEND = ${filtroNum} THEN 0 ELSE 1 END, ENDE.ENDPIC DESC, ENDE.DATVAL ASC`;
             } else {
                 const removerAcentos = (texto) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
                 const palavrasChave = removerAcentos(filtroLimpo).split(' ').filter(p => p.length > 0);
                 const condicoes = palavrasChave.map(palavra => {
                     const palavraUpper = sanitizeStringForSql(palavra.toUpperCase());
                     return `(
-                        TRANSLATE(UPPER(DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%' OR
-                        TRANSLATE(UPPER(MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%' OR
-                        TRANSLATE(UPPER(DERIVACAO), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%'
+                        TRANSLATE(UPPER(PRO.DESCRPROD), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%' OR
+                        TRANSLATE(UPPER(PRO.MARCA), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') LIKE '%${palavraUpper}%'
                     )`;
                 });
                 if (condicoes.length > 0) sql += ` AND ${condicoes.join(' AND ')}`;
@@ -102,7 +101,7 @@ const searchItems = async (req, res, next) => {
         checkApiResponse(data);
         if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
         res.json(data.responseBody.rows || []);
-    } catch (error) {
+    } catch (error){
         logger.error(`Erro em searchItems para ${username}: ${error.message}`);
         next(error);
     }
