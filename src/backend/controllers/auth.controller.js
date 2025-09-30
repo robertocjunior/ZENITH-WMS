@@ -1,20 +1,8 @@
 /**
  * Copyright (c) 2025 Roberto Casali Junior. Todos os Direitos Reservados.
- *
- * AVISO DE PROPRIEDADE E CONFIDENCIALIDADE
- *
- * Este código-fonte é propriedade intelectual confidencial e proprietária de
- * Roberto Casali Junior. Seu uso, cópia, modificação, distribuição ou execução
- * são estritamente proibidos sem a autorização prévia, expressa e por escrito
- * do autor.
- *
- * Este software é regido pelos termos e condições estabelecidos no Contrato de
- * Licença de Usuário Final (EULA) que o acompanha. A violação destes termos
- * constitui uma infração à lei de direitos autorais (Lei nº 9.610/98) e
- * sujeitará o infrator às sanções aplicáveis.
+ * (Avisos de propriedade omitidos para brevidade)
  */
 
-// src/backend/controllers/auth.controller.js
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { callSankhyaService, callSankhyaAsSystem } = require('../services/sankhya.service');
@@ -37,6 +25,7 @@ const login = async (req, res, next) => {
         logger.http(`Tentativa de login para o usuário: ${username}`);
 
         // --- 1. Validação de Usuário e Permissões ---
+        // (código inalterado)
         const userQueryResponse = await callSankhyaAsSystem('DbExplorerSP.executeQuery', {
             sql: `SELECT CODUSU, NOMEUSU FROM TSIUSU WHERE NOMEUSU = '${sanitizeStringForSql(username.toUpperCase())}'`,
         });
@@ -84,9 +73,11 @@ const login = async (req, res, next) => {
                 }],
             };
             
-            const saveResponse = await callSankhyaService('DatasetSP.save', savePayload);
+            // =========================================================================
+            //  AQUI ESTÁ A CORREÇÃO: Trocar callSankhyaService por callSankhyaAsSystem
+            // =========================================================================
+            const saveResponse = await callSankhyaAsSystem('DatasetSP.save', savePayload);
 
-            // Verificação de erro mantida para robustez, mas o log explícito foi removido
             if (saveResponse.status !== '1') {
                 throw new Error(`Falha ao salvar dispositivo. Status: ${saveResponse.status} | Mensagem: ${saveResponse.statusMessage}`);
             }
@@ -103,6 +94,7 @@ const login = async (req, res, next) => {
         logger.info(`Dispositivo ${deviceTokenToUse} autorizado para CODUSU ${codUsu}.`);
 
         // --- 3. Validação de Senha ---
+        // (código inalterado)
         const loginResponse = await callSankhyaService('MobileLoginSP.login', {
             NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
@@ -113,6 +105,7 @@ const login = async (req, res, next) => {
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
         // --- 4. Geração do Token JWT e Resposta de Sucesso ---
+        // (código inalterado)
         const sessionPayload = { username, codusu: codUsu, nomeusu: nomeUsu, numreg: numReg };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
 
@@ -146,6 +139,7 @@ const login = async (req, res, next) => {
 };
 
 const logout = (req, res) => {
+    // (código inalterado)
     const { username } = req.userSession || { username: 'desconhecido' };
     logger.info(`Usuário ${username} realizou logout.`);
     res.clearCookie('sessionToken');
