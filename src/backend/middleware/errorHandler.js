@@ -16,17 +16,37 @@
 
 // src/backend/middleware/errorHandler.js
 const logger = require('../../../logger');
-const { ZodError } = require('zod'); // Importa o ZodError para uma verificação mais segura
-const { sendErrorEmail } = require('../services/email.service'); // Importa o nosso novo serviço
+const { ZodError } = require('zod');
+const { sendErrorEmail } = require('../services/email.service');
 
 const errorHandler = (err, req, res, next) => {
     logger.error(`Erro não tratado: ${err.message}\nStack: ${err.stack}`);
 
-    // NOVO: Envia o e-mail de notificação em segundo plano
-    // A função é 'async' mas não usamos 'await' para não bloquear a resposta ao usuário
-    sendErrorEmail(err, req);
+    // =================================================================
+    // NOVO: Bloco de sanitização para remover dados sensíveis
+    // =================================================================
+    // Clona o objeto de requisição para evitar modificar o original
+    const sanitizedReq = {
+        ...req,
+        // Clona o body para poder modificá-lo com segurança
+        body: req.body ? { ...req.body } : {}
+    };
 
-    // Erro de validação do Zod
+    // Se houver um campo 'password' no corpo da requisição, ele será removido
+    if (sanitizedReq.body.password) {
+        sanitizedReq.body.password = '[REMOVIDO POR SEGURANÇA]';
+    }
+    // Você pode adicionar outras chaves para remover aqui no futuro (ex: token, etc.)
+    // if (sanitizedReq.body.secretKey) {
+    //     sanitizedReq.body.secretKey = '[REMOVIDO POR SEGURANÇA]';
+    // }
+
+    // Envia o e-mail de notificação com a requisição já sanitizada
+    sendErrorEmail(err, sanitizedReq);
+    // =================================================================
+
+
+    // Zod validation errors
     if (err instanceof ZodError) {
         return res.status(400).json({
             message: 'Dados da requisição inválidos.',
@@ -37,7 +57,6 @@ const errorHandler = (err, req, res, next) => {
     const statusCode = err.statusCode || 500;
     const message = err.message || 'Ocorreu um erro interno no servidor.';
 
-    // Evita enviar uma nova resposta se uma já foi enviada
     if (res.headersSent) {
         return next(err);
     }

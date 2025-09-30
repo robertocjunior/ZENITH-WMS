@@ -18,6 +18,7 @@
 const { callSankhyaService, callSankhyaAsSystem } = require('../services/sankhya.service');
 const logger = require('../../../logger');
 const { sanitizeNumber, sanitizeStringForSql, formatDbDateToApi } = require('../utils/sanitizer');
+const { sendErrorEmail } = require('../services/email.service');
 
 const checkApiResponse = (data) => {
     if (!data || data.status !== '1') {
@@ -65,34 +66,22 @@ const getPermissions = async (req, res, next) => {
     }
 };
 
-// RESTAURADO: Esta é a versão original e funcional da sua busca.
 const searchItems = async (req, res, next) => {
     const { codArm, filtro } = req.body;
     const { username } = req.userSession;
     logger.http(`Usuário ${username} buscou por '${filtro || 'todos'}' no armazém ${codArm}.`);
     try {
-        let sql = `
-            WITH ITENS_COM_DERIVACAO AS (
-                SELECT
-                    ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD,
-                    PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC,
-                    TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA,
-                    (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO,
-                    ENDE.CODARM
-                FROM AD_CADEND ENDE
-                JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD
-            )
-            SELECT * FROM ITENS_COM_DERIVACAO
-            WHERE CODARM = ${sanitizeNumber(codArm)}
-        `;
-
+        // =================================================================
+        // ALTERADO: Trocado 'const' por 'let' para permitir a modificação da string SQL
+        // =================================================================
+        let sql = `SELECT * FROM V_WMS_ITEM_DETALHES WHERE CODARM = ${sanitizeNumber(codArm)}`;
         let orderBy = ' ORDER BY ENDPIC DESC, DATVAL ASC';
 
         if (filtro) {
             const filtroLimpo = filtro.trim();
             if (/^\d+$/.test(filtroLimpo)) {
                 const filtroNum = sanitizeNumber(filtroLimpo);
-                sql += ` AND (SEQEND LIKE '${sanitizeStringForSql(filtroLimpo)}%' OR CODPROD = ${filtroNum} OR CODPROD = (SELECT CODPROD FROM AD_CADEND WHERE SEQEND = ${filtroNum} AND CODARM = ${sanitizeNumber(codArm)} AND ROWNUM = 1))`;
+                sql += ` AND (SEQEND LIKE '${sanitizeStringForSql(filtroLimpo)}%' OR CODPROD = ${filtroNum} OR CODPROD = (SELECT CODPROD FROM V_WMS_ITEM_DETALHES WHERE SEQEND = ${filtroNum} AND CODARM = ${sanitizeNumber(codArm)} AND ROWNUM = 1))`;
                 orderBy = ` ORDER BY CASE WHEN SEQEND = ${filtroNum} THEN 0 ELSE 1 END, ENDPIC DESC, DATVAL ASC`;
             } else {
                 const removerAcentos = (texto) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -119,7 +108,6 @@ const searchItems = async (req, res, next) => {
     }
 };
 
-// ALTERADO: Esta função agora usa a VIEW, ficando mais simples e performática.
 const getItemDetails = async (req, res, next) => {
     const { codArm, sequencia } = req.body;
     const { username } = req.userSession;
@@ -321,6 +309,7 @@ const executeTransaction = async (req, res, next) => {
     } catch (error) {
         logger.error(`Erro em /execute-transaction para o usuário ${username}: ${error.message}`);
         if (error.message && error.message.includes('Não autorizado')) {
+            sendErrorEmail(error, req);
             return res.status(401).json({
                 message: "Sua sessão no sistema Sankhya expirou. Por favor, faça o login novamente para continuar.",
                 reauthRequired: true
