@@ -20,13 +20,13 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
         .header {
-            background-color: #00529B; /* Cor primária do seu app */
+            background-color: #00529B;
             padding: 30px 20px;
             text-align: center;
         }
         .header img {
-            max-width: 220px; /* Largura ajustada para o logo completo */
-            height: auto; /* Altura automática para manter a proporção */
+            max-width: 220px;
+            height: auto;
             margin-bottom: 15px;
         }
         .header h1 {
@@ -38,7 +38,7 @@
             padding: 30px;
         }
         .content h2 {
-            color: #D32F2F; /* Cor para o erro */
+            color: #D32F2F;
             font-size: 20px;
             border-bottom: 2px solid #f0f0f0;
             padding-bottom: 10px;
@@ -62,21 +62,27 @@
             border-radius: 6px;
             word-break: break-all;
         }
-        /* NOVO: Estilos para destacar o ambiente de teste */
         .details-grid dd.env-teste {
-            background-color: #fffbe6; /* Amarelo bem claro */
+            background-color: #fffbe6;
             color: #b38600;
             font-weight: bold;
             border: 1px solid #ffe58f;
         }
-        .stack-trace {
+        .details-grid dd.env-prod {
+            background-color: #ffebee;
+            color: #c62828;
+            font-weight: bold;
+            border: 1px solid #ffcdd2;
+        }
+        .code-block {
             margin-top: 30px;
         }
-        .stack-trace h3 {
+        .code-block h3 {
             font-size: 16px;
             color: #333;
+            margin-bottom: 10px;
         }
-        .stack-trace pre {
+        .code-block pre {
             background-color: #2d2d2d;
             color: #f2f2f2;
             padding: 15px;
@@ -96,10 +102,9 @@
         code {
             font-family: 'Courier New', Courier, monospace;
         }
-        /* NOVO: Media query para telas pequenas */
         @media (max-width: 600px) {
             .details-grid {
-                grid-template-columns: 1fr; /* Colunas empilhadas */
+                grid-template-columns: 1fr;
             }
             .content {
                 padding: 20px;
@@ -128,12 +133,19 @@
 
                 <dt>Endpoint:</dt>
                 <dd><code>{{endpoint}}</code></dd>
-
-                <dt>Corpo da Requisição:</dt>
-                <dd><pre><code>{{body}}</code></pre></dd>
             </dl>
 
-            <div class="stack-trace">
+            <div class="code-block">
+                <h3>Corpo da Requisição:</h3>
+                <pre><code>{{body}}</code></pre>
+            </div>
+            
+            <div class="code-block">
+                <h3>Resposta do ERP (Sankhya):</h3>
+                <pre><code>{{sankhyaResponse}}</code></pre>
+            </div>
+
+            <div class="code-block">
                 <h3>Rastreamento da Pilha (Stack Trace):</h3>
                 <pre>{{stackTrace}}</pre>
             </div>

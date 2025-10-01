@@ -18,7 +18,6 @@
 const { callSankhyaService, callSankhyaAsSystem } = require('../services/sankhya.service');
 const logger = require('../../../logger');
 const { sanitizeNumber, sanitizeStringForSql, formatDbDateToApi } = require('../utils/sanitizer');
-const { sendErrorEmail } = require('../services/email.service');
 
 const checkApiResponse = (data) => {
     if (!data || data.status !== '1') {
@@ -71,9 +70,6 @@ const searchItems = async (req, res, next) => {
     const { username } = req.userSession;
     logger.http(`Usuário ${username} buscou por '${filtro || 'todos'}' no armazém ${codArm}.`);
     try {
-        // =================================================================
-        // CORRIGIDO: Voltamos para a consulta SQL explícita para garantir a ordem das colunas
-        // =================================================================
         let sql = `SELECT ENDE.SEQEND, ENDE.CODRUA, ENDE.CODPRD, ENDE.CODAPT, ENDE.CODPROD, PRO.DESCRPROD, PRO.MARCA, ENDE.DATVAL, ENDE.QTDPRO, ENDE.ENDPIC, TO_CHAR(ENDE.QTDPRO) || ' ' || ENDE.CODVOL AS QTD_COMPLETA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = ENDE.CODPROD AND V.CODVOL = ENDE.CODVOL) AS DERIVACAO FROM AD_CADEND ENDE JOIN TGFPRO PRO ON PRO.CODPROD = ENDE.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codArm)}`;
         let orderBy = ' ORDER BY ENDE.ENDPIC DESC, ENDE.DATVAL ASC';
 
@@ -306,14 +302,16 @@ const executeTransaction = async (req, res, next) => {
         res.json({ message: stpData.statusMessage || 'Operação concluída com sucesso!' });
 
     } catch (error) {
-        logger.error(`Erro em /execute-transaction para o usuário ${username}: ${error.message}`);
-        if (error.message && error.message.includes('Não autorizado')) {
-            sendErrorEmail(error, req);
-            return res.status(401).json({
-                message: "Sua sessão no sistema Sankhya expirou. Por favor, faça o login novamente para continuar.",
-                reauthRequired: true
-            });
+        // =================================================================
+        // ALTERADO: Lógica de erro simplificada e centralizada
+        // =================================================================
+        // 1. Captura a resposta do ERP, se existir, e a anexa ao objeto de erro
+        const sankhyaResponse = error.response?.data;
+        if (sankhyaResponse) {
+            error.sankhyaResponse = sankhyaResponse;
         }
+
+        // 2. Passa o erro "enriquecido" para o errorHandler, que cuidará do e-mail e da resposta.
         next(error);
     }
 };
