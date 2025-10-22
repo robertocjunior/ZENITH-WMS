@@ -222,35 +222,29 @@ const executeTransaction = async (req, res, next) => {
     const formatQuantityForSankhya = (quantity) => {
         const normalizedString = String(quantity).replace(',', '.');
         const number = parseFloat(normalizedString);
-        if (isNaN(number)) {
-            return '0.000';
-        }
-        return number.toFixed(3);
+        return isNaN(number) ? '0.000' : number.toFixed(3);
     };
 
     try {
         // Verifica permissão (agora usa cache, se disponível)
         let permissions;
-        if (isCacheValid(permissionCache[codusu])) {
-            permissions = permissionCache[codusu].data;
+        if (isCacheValid(permissionCache[codusu])) { // Reutiliza cache se válido
+             permissions = permissionCache[codusu].data;
         } else {
-            const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
-            const permData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: permCheckSql });
-            checkApiResponse(permData);
-            if (!permData.responseBody.rows.length) {
-                permissions = { baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false };
-            } else {
-                 const perms = permData.responseBody.rows[0];
-                 permissions = {
-                    baixa: perms[0] === 'S', transfer: perms[1] === 'S', pick: perms[2] === 'S',
-                    corre: perms[3] === 'S', bxaPick: perms[4] === 'S', criaPick: perms[5] === 'S',
-                };
-            }
-             // Salva no cache
-            permissionCache[codusu] = {
-                data: permissions,
-                expiresAt: Date.now() + CACHE_DURATION_MS
-            };
+            // Consulta permissões se não houver cache válido
+             const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+             const permData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: permCheckSql });
+             checkApiResponse(permData);
+             if (!permData.responseBody.rows.length) {
+                 permissions = { baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false };
+             } else {
+                  const perms = permData.responseBody.rows[0];
+                  permissions = {
+                     baixa: perms[0] === 'S', transfer: perms[1] === 'S', pick: perms[2] === 'S',
+                     corre: perms[3] === 'S', bxaPick: perms[4] === 'S', criaPick: perms[5] === 'S',
+                 };
+             }
+             permissionCache[codusu] = { data: permissions, expiresAt: Date.now() + CACHE_DURATION_MS }; // Salva no cache
         }
 
         const hasPermission =
@@ -264,30 +258,33 @@ const executeTransaction = async (req, res, next) => {
             return res.status(403).json({ message: 'Você não tem permissão para executar esta ação.' });
         }
 
+
         if (type === 'correcao') {
-            const { codarm, sequencia, newQuantity } = payload;
-            const itemSql = `SELECT DEND.CODPROD, DEND.CODVOL, DEND.DATENT, DEND.DATVAL, DEND.QTDPRO, PRO.MARCA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = DEND.CODPROD AND V.CODVOL = DEND.CODVOL) AS DERIVACAO FROM AD_CADEND DEND JOIN TGFPRO PRO ON DEND.CODPROD = PRO.CODPROD WHERE DEND.CODARM = ${sanitizeNumber(codarm)} AND DEND.SEQEND = ${sanitizeNumber(sequencia)}`;
-            const itemData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: itemSql });
-            checkApiResponse(itemData);
-            if (!itemData.responseBody.rows.length) throw new Error('Item não encontrado para correção.');
+            // Lógica de correção mantida como antes - não usa AD_IBXEND batch
+             const { codarm, sequencia, newQuantity } = payload;
+             const itemSql = `SELECT DEND.CODPROD, DEND.CODVOL, DEND.DATENT, DEND.DATVAL, DEND.QTDPRO, PRO.MARCA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = DEND.CODPROD AND V.CODVOL = DEND.CODVOL) AS DERIVACAO FROM AD_CADEND DEND JOIN TGFPRO PRO ON DEND.CODPROD = PRO.CODPROD WHERE DEND.CODARM = ${sanitizeNumber(codarm)} AND DEND.SEQEND = ${sanitizeNumber(sequencia)}`;
+             const itemData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: itemSql });
+             checkApiResponse(itemData);
+             if (!itemData.responseBody.rows.length) throw new Error('Item não encontrado para correção.');
 
-            const [codprod, codvol, datent, datval, qtdAnterior, marca, derivacao] = itemData.responseBody.rows[0];
-            const scriptRequestBody = { runScript: { actionID: "97", refreshType: "SEL", params: { param: [ { type: "S", paramName: "CODPROD", $: codprod }, { type: "S", paramName: "CODVOL", $: codvol || '' }, { type: "F", paramName: "QTDPRO", $: newQuantity }, { type: "D", paramName: "DATENT", $: formatDbDateToApi(datent) }, { type: "D", paramName: "DATVAL", $: formatDbDateToApi(datval) } ] }, rows: { row: [{ field: [ { fieldName: "CODARM", $: codarm.toString() }, { fieldName: "SEQEND", $: sequencia.toString() } ] }] } }, clientEventList: { clientEvent: [{ "$": "br.com.sankhya.actionbutton.clientconfirm" }] } };
+             const [codprod, codvol, datent, datval, qtdAnterior, marca, derivacao] = itemData.responseBody.rows[0];
+             const scriptRequestBody = { runScript: { actionID: "97", refreshType: "SEL", params: { param: [ { type: "S", paramName: "CODPROD", $: codprod }, { type: "S", paramName: "CODVOL", $: codvol || '' }, { type: "F", paramName: "QTDPRO", $: newQuantity }, { type: "D", paramName: "DATENT", $: formatDbDateToApi(datent) }, { type: "D", paramName: "DATVAL", $: formatDbDateToApi(datval) } ] }, rows: { row: [{ field: [ { fieldName: "CODARM", $: codarm.toString() }, { fieldName: "SEQEND", $: sequencia.toString() } ] }] } }, clientEventList: { clientEvent: [{ "$": "br.com.sankhya.actionbutton.clientconfirm" }] } };
 
-            const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
-            checkApiResponse(result); // Verifica se o script rodou com sucesso
+             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
+             checkApiResponse(result); // Verifica se o script rodou com sucesso
 
-            const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu }}]};
+             const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu }}]};
 
-            await callSankhyaService('DatasetSP.save', histRecord);
+             await callSankhyaService('DatasetSP.save', histRecord);
 
-            logger.info(`Histórico de correção salvo para SEQEND ${sequencia}.`);
-            return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
+             logger.info(`Histórico de correção salvo para SEQEND ${sequencia}.`);
+             return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
         }
 
         // --- Lógica para Baixa, Transferência e Picking ---
         const hoje = new Date().toLocaleDateString('pt-BR');
 
+        // 1. Cria o cabeçalho AD_BXAEND
         const cabecalhoData = await callSankhyaService('DatasetSP.save', {
             entityName: 'AD_BXAEND',
             fields: ['SEQBAI', 'DATGER', 'USUGER'],
@@ -301,90 +298,131 @@ const executeTransaction = async (req, res, next) => {
         const seqBai = cabecalhoData.responseBody.result[0][0];
         logger.info(`Cabeçalho da transação ${seqBai} criado para o usuário ${username} (USUGER: ${codusu}).`);
 
-        let recordsToSave = [];
+        // --- Início: Preparação do Batch ---
+        const batchRecords = []; // Array para guardar os 'values' de cada item
+        // Ordem dos campos DEVE corresponder aos índices ('0', '1', ...) nos 'values' abaixo
+        const itemFields = ['SEQBAI', 'CODARM', 'SEQEND', 'ARMDES', 'ENDDES', 'QTDPRO', 'APP'];
+
         if (type === 'baixa') {
-            // Verifica permissão específica para baixar de picking
-            if (payload.origem?.endpic === 'S' && !permissions.bxaPick) {
-                 logger.warn(`Tentativa de baixa de picking (SEQEND: ${payload.sequencia}) bloqueada por falta de permissão BXAPICK para ${username}.`);
-                 throw new Error('Você não tem permissão para baixar itens de uma área de picking.');
-            }
-            recordsToSave.push({
-                entityName: 'AD_IBXEND',
-                fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
-                values: { 2: payload.codarm.toString(), 3: payload.sequencia.toString(), 4: formatQuantityForSankhya(payload.quantidade), 5: 'S' },
+             // Verifica permissão BXAPICK se a origem for área de picking
+             if (payload.origem?.endpic === 'S' && !permissions.bxaPick) {
+                  logger.warn(`Tentativa de baixa de picking (SEQEND: ${payload.sequencia}) bloqueada por falta de permissão BXAPICK para ${username}.`);
+                  throw new Error('Você não tem permissão para baixar itens de uma área de picking.');
+             }
+            batchRecords.push({
+                values: {
+                    '0': seqBai.toString(),                     // SEQBAI
+                    '1': payload.codarm.toString(),           // CODARM
+                    '2': payload.sequencia.toString(),        // SEQEND
+                    '3': null,                                // ARMDES (null para baixa)
+                    '4': null,                                // ENDDES (null para baixa)
+                    '5': formatQuantityForSankhya(payload.quantidade), // QTDPRO
+                    '6': 'S'                                  // APP
+                }
             });
         } else if (type === 'transferencia' || type === 'picking') {
-            const { codarm, sequencia, codprod } = payload.origem;
+            const { codarm, sequencia, codprod, endpic: origemEndpic } = payload.origem; // Pega endpic da origem
             const { armazemDestino, enderecoDestino, quantidade, criarPick } = payload.destino;
 
-            // Verifica se o usuário tem permissão para criar picking
+            // Verifica permissão BXAPICK se a origem for picking (mesmo para transferir/mover para picking)
+             if (origemEndpic === 'S' && !permissions.bxaPick) {
+                  logger.warn(`Tentativa de ${type} originada de picking (SEQEND: ${sequencia}) bloqueada por falta de permissão BXAPICK para ${username}.`);
+                  throw new Error('Você não tem permissão para mover itens de uma área de picking.');
+             }
+
             const canCreatePick = criarPick === true && permissions.criaPick;
 
+            // Verifica se o destino já tem o mesmo produto (código original mantido)
             const checkSql = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = '${sanitizeStringForSql(enderecoDestino)}' AND CODARM = ${sanitizeNumber(armazemDestino)}`;
             const checkData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: checkSql });
             checkApiResponse(checkData);
-
             const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
 
             // Se o destino já tem o mesmo produto, adiciona um registro para ele também (lógica original mantida)
-             if (destinationItem && destinationItem[0] === codprod) {
-                recordsToSave.push({
-                    entityName: 'AD_IBXEND',
-                    fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
-                    values: { 2: armazemDestino.toString(), 3: enderecoDestino, 4: formatQuantityForSankhya(destinationItem[1]), 5: 'S' },
+            if (destinationItem && destinationItem[0] === codprod) {
+                batchRecords.push({
+                    values: {
+                        '0': seqBai.toString(),                     // SEQBAI
+                        '1': armazemDestino.toString(),           // CODARM (do destino)
+                        '2': enderecoDestino,                     // SEQEND (do destino)
+                        '3': null,                                // ARMDES (null pois é linha de destino)
+                        '4': null,                                // ENDDES (null pois é linha de destino)
+                        '5': formatQuantityForSankhya(destinationItem[1]), // QTDPRO (qtd anterior no destino)
+                        '6': 'S'                                  // APP
+                    }
                 });
             }
 
-            // Registro principal da transferência/picking
-            recordsToSave.push({
+            // Registro principal da transferência/picking (origem -> destino)
+            batchRecords.push({
+                values: {
+                    '0': seqBai.toString(),                     // SEQBAI
+                    '1': codarm.toString(),                   // CODARM (origem)
+                    '2': sequencia.toString(),                // SEQEND (origem)
+                    '3': armazemDestino.toString(),           // ARMDES
+                    '4': enderecoDestino,                     // ENDDES
+                    '5': formatQuantityForSankhya(quantidade), // QTDPRO (a ser movida)
+                    '6': 'S'                                  // APP
+                }
+            });
+
+             // Atualiza o ENDPIC do destino se for transferência e o usuário tiver permissão
+             if (type === 'transferencia' && canCreatePick) {
+                 logger.info(`Tentando marcar o destino ${armazemDestino}-${enderecoDestino} como picking.`);
+                 const updateResult = await callSankhyaService('DatasetSP.save', {
+                     entityName: 'CADEND', standAlone: false, fields: ['CODARM', 'SEQEND', 'ENDPIC'],
+                     records: [{ pk: { CODARM: armazemDestino.toString(), SEQEND: enderecoDestino }, values: { '2': 'S' }}]
+                 });
+                  if (updateResult.status !== '1') {
+                     logger.warn(`Falha ao definir ENDPIC='S' no destino: ${updateResult.statusMessage}`);
+                  } else {
+                      logger.info(`Destino ${enderecoDestino} no armazém ${armazemDestino} foi definido como um local de picking.`);
+                  }
+             } else if (type === 'transferencia' && criarPick === true && !permissions.criaPick) {
+                  logger.warn(`Usuário ${username} tentou marcar destino como picking sem permissão CRIAPICK. A flag ENDPIC não será alterada.`);
+             }
+        }
+        // --- Fim: Preparação do Batch ---
+
+        // 2. Salva todos os itens AD_IBXEND em uma única chamada
+        if (batchRecords.length > 0) {
+            const batchSavePayload = {
                 entityName: 'AD_IBXEND',
-                fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'ARMDES', 'ENDDES', 'QTDPRO', 'APP'],
-                values: { 2: codarm.toString(), 3: sequencia.toString(), 4: armazemDestino.toString(), 5: enderecoDestino, 6: formatQuantityForSankhya(quantidade), 7: 'S' },
-            });
-
-            // Atualiza o ENDPIC do destino se for transferência e o usuário tiver permissão
-            if (type === 'transferencia' && canCreatePick) {
-                logger.info(`Tentando marcar o destino ${armazemDestino}-${enderecoDestino} como picking.`);
-                const updateResult = await callSankhyaService('DatasetSP.save', {
-                    entityName: 'CADEND', standAlone: false, fields: ['CODARM', 'SEQEND', 'ENDPIC'],
-                    records: [{ pk: { CODARM: armazemDestino.toString(), SEQEND: enderecoDestino }, values: { '2': 'S' }}]
-                });
-                 if (updateResult.status !== '1') {
-                    logger.warn(`Falha ao definir ENDPIC='S' no destino: ${updateResult.statusMessage}`);
-                    // Decide se deve prosseguir ou lançar erro. Por ora, apenas loga.
-                 } else {
-                     logger.info(`Destino ${enderecoDestino} no armazém ${armazemDestino} foi definido como um local de picking.`);
-                 }
-            } else if (type === 'transferencia' && criarPick === true && !permissions.criaPick) {
-                 logger.warn(`Usuário ${username} tentou marcar destino como picking sem permissão CRIAPICK. A flag ENDPIC não será alterada.`);
-                 // Não lança erro, mas loga o aviso.
-            }
+                fields: itemFields, // Usa a lista de campos definida
+                standAlone: false,
+                records: batchRecords // Passa o array de 'values'
+            };
+            logger.debug(`Enviando batch save para AD_IBXEND com ${batchRecords.length} registros para SEQBAI ${seqBai}.`); // Payload removido do log por verbosidade
+            const batchResult = await callSankhyaService('DatasetSP.save', batchSavePayload);
+            checkApiResponse(batchResult);
+            logger.info(`${batchRecords.length} item(ns) AD_IBXEND salvos via batch para a transação ${seqBai}.`);
+        } else {
+             logger.warn(`Nenhum registro AD_IBXEND para salvar na transação ${seqBai}.`);
+             // Considerar se deve prosseguir ou retornar erro aqui.
+             // Por ora, vamos permitir prosseguir para que a STP rode, caso necessário.
         }
 
-        // Salva os itens da transação
-        for (const record of recordsToSave) {
-            record.values['1'] = seqBai; // Adiciona o SEQBAI
-            const itemData = await callSankhyaService('DatasetSP.save', {
-                entityName: record.entityName, fields: record.fields, standAlone: false, records: [{ values: record.values }],
-            });
-            checkApiResponse(itemData);
-        }
-        logger.info(`${recordsToSave.length} item(ns) salvos para a transação ${seqBai}.`);
 
-        // Polling para esperar a trigger popular CODPROD
+        // 3. Polling para esperar a trigger popular CODPROD (mantido)
         const pollSql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
         let isPopulated = false;
+        const expectedCount = batchRecords.length; // Espera que todos os registros do batch sejam populados
         for (let i = 0; i < 10; i++) { // Tenta por 5 segundos
             const pollData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: pollSql });
-            if (pollData.status === '1' && pollData.responseBody && parseInt(pollData.responseBody.rows[0][0], 10) >= recordsToSave.length) {
+            // Verifica se status é 1 E se tem responseBody E se a contagem é suficiente
+            if (pollData.status === '1' && pollData.responseBody?.rows?.[0]?.[0] !== undefined && parseInt(pollData.responseBody.rows[0][0], 10) >= expectedCount) {
                 isPopulated = true; break;
             }
+            logger.debug(`Polling AD_IBXEND para SEQBAI ${seqBai}: Encontrado ${pollData.responseBody?.rows?.[0]?.[0] ?? 'erro/vazio'} / Esperado >= ${expectedCount}`);
             await new Promise((resolve) => setTimeout(resolve, 500));
         }
-        if (!isPopulated) throw new Error('Timeout: O sistema não populou o CODPROD a tempo.');
+        if (!isPopulated) {
+             logger.error(`Timeout no polling para SEQBAI ${seqBai}. Trigger TRG_AD_IBXEND_SET_CODPROD pode não ter populado CODPROD a tempo.`);
+             throw new Error('Timeout: O sistema não populou os dados da transação a tempo.');
+        }
         logger.info(`Polling de CODPROD bem-sucedido para a transação ${seqBai}.`);
 
-        // Executa a procedure de baixa/transferência
+        // 4. Executa a procedure de baixa/transferência (mantido)
         const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', {
             stpCall: {
                 actionID: '20', procName: 'NIC_STP_BAIXA_END', rootEntity: 'AD_BXAEND',
@@ -393,8 +431,10 @@ const executeTransaction = async (req, res, next) => {
         });
 
         // Verifica o status da procedure
-        if (stpData.status !== '1' && stpData.status !== '2') { // Status 1 ou 2 são considerados sucesso
-            throw new Error(stpData.statusMessage || 'Falha ao executar a procedure de baixa/transferência.');
+        if (stpData.status !== '1' && stpData.status !== '2') { // Status 1 ou 2 são sucesso
+             const stpError = new Error(stpData.statusMessage || 'Falha ao executar a procedure de baixa/transferência.');
+             stpError.sankhyaResponse = stpData; // Anexa a resposta para o errorHandler
+             throw stpError;
         }
 
         logger.info(`Transação ${type} (SEQBAI: ${seqBai}) finalizada com sucesso para o usuário ${username}.`);
