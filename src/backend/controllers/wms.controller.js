@@ -19,51 +19,104 @@ const { callSankhyaService, callSankhyaAsSystem } = require('../services/sankhya
 const logger = require('../../../logger');
 const { sanitizeNumber, sanitizeStringForSql, formatDbDateToApi } = require('../utils/sanitizer');
 
+// --- Início: Configuração do Cache ---
+const warehouseCache = {}; // Cache para armazéns por numreg
+const permissionCache = {}; // Cache para permissões por codusu
+const CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutos de cache
+
+const isCacheValid = (cacheEntry) => {
+    return cacheEntry && cacheEntry.expiresAt > Date.now();
+};
+// --- Fim: Configuração do Cache ---
+
 const checkApiResponse = (data) => {
     if (!data || data.status !== '1') {
         const errorMessage = data?.statusMessage || 'Falha na comunicação com a API Sankhya.';
-        throw new Error(errorMessage);
+        // Guarda a resposta original no erro para o errorHandler usar
+        const error = new Error(errorMessage);
+        error.sankhyaResponse = data;
+        throw error;
     }
 };
 
 const getWarehouses = async (req, res, next) => {
     const { username, numreg } = req.userSession;
     logger.http(`Usuário ${username} (NUMREG: ${numreg}) solicitou a lista de armazéns.`);
+
+    // --- Início: Lógica de Cache ---
+    if (isCacheValid(warehouseCache[numreg])) {
+        logger.info(`Retornando armazéns do cache para NUMREG ${numreg}.`);
+        return res.json(warehouseCache[numreg].data);
+    }
+    // --- Fim: Lógica de Cache ---
+
     try {
         const sql = `SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM WHERE CODARM IN (SELECT CODARM FROM AD_PERMEND WHERE NUMREG = ${sanitizeNumber(numreg)}) ORDER BY CODARM`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
         if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
-        res.json(data.responseBody.rows || []);
+
+        const warehouses = data.responseBody.rows || [];
+
+        // --- Início: Salvar no Cache ---
+        warehouseCache[numreg] = {
+            data: warehouses,
+            expiresAt: Date.now() + CACHE_DURATION_MS
+        };
+        logger.info(`Armazéns para NUMREG ${numreg} salvos no cache.`);
+        // --- Fim: Salvar no Cache ---
+
+        res.json(warehouses);
     } catch (error) {
         logger.error(`Erro em getWarehouses para ${username}: ${error.message}`);
-        next(error);
+        next(error); // Passa o erro para o errorHandler
     }
 };
 
 const getPermissions = async (req, res, next) => {
     const { username, codusu } = req.userSession;
     logger.http(`Verificando permissões para o usuário ${username} (CODUSU: ${codusu}).`);
+
+    // --- Início: Lógica de Cache ---
+    if (isCacheValid(permissionCache[codusu])) {
+        logger.info(`Retornando permissões do cache para CODUSU ${codusu}.`);
+        return res.json(permissionCache[codusu].data);
+    }
+    // --- Fim: Lógica de Cache ---
+
     try {
         const sql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
         checkApiResponse(data);
+
+        let permissions;
         if (!data.responseBody?.rows?.length) {
-            logger.warn(`Nenhuma permissão encontrada para o usuário ${username}. Retornando acesso negado.`);
-            return res.json({ baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false });
+            logger.warn(`Nenhuma permissão encontrada para o usuário ${username}. Definindo como negadas.`);
+            permissions = { baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false };
+        } else {
+            const perms = data.responseBody.rows[0];
+            permissions = {
+                baixa: perms[0] === 'S', transfer: perms[1] === 'S', pick: perms[2] === 'S',
+                corre: perms[3] === 'S', bxaPick: perms[4] === 'S', criaPick: perms[5] === 'S',
+            };
+            logger.info(`Permissões consultadas para ${username}: Baixa=${permissions.baixa}, Transfer=${permissions.transfer}, Pick=${permissions.pick}, Corre=${permissions.corre}, BxaPick=${permissions.bxaPick}, CriaPick=${permissions.criaPick}.`);
         }
-        const perms = data.responseBody.rows[0];
-        const permissions = {
-            baixa: perms[0] === 'S', transfer: perms[1] === 'S', pick: perms[2] === 'S',
-            corre: perms[3] === 'S', bxaPick: perms[4] === 'S', criaPick: perms[5] === 'S',
+
+        // --- Início: Salvar no Cache ---
+        permissionCache[codusu] = {
+            data: permissions,
+            expiresAt: Date.now() + CACHE_DURATION_MS
         };
-        logger.info(`Permissões para ${username}: Baixa=${permissions.baixa}, Transfer=${permissions.transfer}, Pick=${permissions.pick}, Corre=${permissions.corre}, BxaPick=${permissions.bxaPick}, CriaPick=${permissions.criaPick}.`);
+        logger.info(`Permissões para CODUSU ${codusu} salvas no cache.`);
+        // --- Fim: Salvar no Cache ---
+
         res.json(permissions);
     } catch (error) {
         logger.error(`Erro em getPermissions para ${username}: ${error.message}`);
-        next(error);
+        next(error); // Passa o erro para o errorHandler
     }
 };
+
 
 const searchItems = async (req, res, next) => {
     const { codArm, filtro } = req.body;
@@ -165,7 +218,7 @@ const executeTransaction = async (req, res, next) => {
     const { type, payload } = req.body;
     const { username, codusu } = req.userSession;
     logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
-    
+
     const formatQuantityForSankhya = (quantity) => {
         const normalizedString = String(quantity).replace(',', '.');
         const number = parseFloat(normalizedString);
@@ -176,18 +229,35 @@ const executeTransaction = async (req, res, next) => {
     };
 
     try {
-        const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
-        const permData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: permCheckSql });
-        checkApiResponse(permData);
-        if (!permData.responseBody.rows.length) {
-            throw new Error('Você não tem permissão para esta ação.');
+        // Verifica permissão (agora usa cache, se disponível)
+        let permissions;
+        if (isCacheValid(permissionCache[codusu])) {
+            permissions = permissionCache[codusu].data;
+        } else {
+            const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
+            const permData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: permCheckSql });
+            checkApiResponse(permData);
+            if (!permData.responseBody.rows.length) {
+                permissions = { baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false };
+            } else {
+                 const perms = permData.responseBody.rows[0];
+                 permissions = {
+                    baixa: perms[0] === 'S', transfer: perms[1] === 'S', pick: perms[2] === 'S',
+                    corre: perms[3] === 'S', bxaPick: perms[4] === 'S', criaPick: perms[5] === 'S',
+                };
+            }
+             // Salva no cache
+            permissionCache[codusu] = {
+                data: permissions,
+                expiresAt: Date.now() + CACHE_DURATION_MS
+            };
         }
-        const perms = permData.responseBody.rows[0];
+
         const hasPermission =
-            (type === 'baixa' && perms[0] === 'S') ||
-            (type === 'transferencia' && perms[1] === 'S') ||
-            (type === 'picking' && perms[2] === 'S') ||
-            (type === 'correcao' && perms[3] === 'S');
+            (type === 'baixa' && permissions.baixa) ||
+            (type === 'transferencia' && permissions.transfer) ||
+            (type === 'picking' && permissions.pick) ||
+            (type === 'correcao' && permissions.corre);
 
         if (!hasPermission) {
             logger.warn(`Tentativa de execução de '${type}' bloqueada por falta de permissão para ${username}.`);
@@ -200,22 +270,24 @@ const executeTransaction = async (req, res, next) => {
             const itemData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: itemSql });
             checkApiResponse(itemData);
             if (!itemData.responseBody.rows.length) throw new Error('Item não encontrado para correção.');
-            
+
             const [codprod, codvol, datent, datval, qtdAnterior, marca, derivacao] = itemData.responseBody.rows[0];
             const scriptRequestBody = { runScript: { actionID: "97", refreshType: "SEL", params: { param: [ { type: "S", paramName: "CODPROD", $: codprod }, { type: "S", paramName: "CODVOL", $: codvol || '' }, { type: "F", paramName: "QTDPRO", $: newQuantity }, { type: "D", paramName: "DATENT", $: formatDbDateToApi(datent) }, { type: "D", paramName: "DATVAL", $: formatDbDateToApi(datval) } ] }, rows: { row: [{ field: [ { fieldName: "CODARM", $: codarm.toString() }, { fieldName: "SEQEND", $: sequencia.toString() } ] }] } }, clientEventList: { clientEvent: [{ "$": "br.com.sankhya.actionbutton.clientconfirm" }] } };
-            
+
             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
-            
+            checkApiResponse(result); // Verifica se o script rodou com sucesso
+
             const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu }}]};
-            
+
             await callSankhyaService('DatasetSP.save', histRecord);
-            
+
             logger.info(`Histórico de correção salvo para SEQEND ${sequencia}.`);
             return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
         }
 
+        // --- Lógica para Baixa, Transferência e Picking ---
         const hoje = new Date().toLocaleDateString('pt-BR');
-        
+
         const cabecalhoData = await callSankhyaService('DatasetSP.save', {
             entityName: 'AD_BXAEND',
             fields: ['SEQBAI', 'DATGER', 'USUGER'],
@@ -231,6 +303,11 @@ const executeTransaction = async (req, res, next) => {
 
         let recordsToSave = [];
         if (type === 'baixa') {
+            // Verifica permissão específica para baixar de picking
+            if (payload.origem?.endpic === 'S' && !permissions.bxaPick) {
+                 logger.warn(`Tentativa de baixa de picking (SEQEND: ${payload.sequencia}) bloqueada por falta de permissão BXAPICK para ${username}.`);
+                 throw new Error('Você não tem permissão para baixar itens de uma área de picking.');
+            }
             recordsToSave.push({
                 entityName: 'AD_IBXEND',
                 fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
@@ -239,36 +316,54 @@ const executeTransaction = async (req, res, next) => {
         } else if (type === 'transferencia' || type === 'picking') {
             const { codarm, sequencia, codprod } = payload.origem;
             const { armazemDestino, enderecoDestino, quantidade, criarPick } = payload.destino;
+
+            // Verifica se o usuário tem permissão para criar picking
+            const canCreatePick = criarPick === true && permissions.criaPick;
+
             const checkSql = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = '${sanitizeStringForSql(enderecoDestino)}' AND CODARM = ${sanitizeNumber(armazemDestino)}`;
             const checkData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: checkSql });
             checkApiResponse(checkData);
 
             const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
-            if (destinationItem && destinationItem[0] === codprod) {
+
+            // Se o destino já tem o mesmo produto, adiciona um registro para ele também (lógica original mantida)
+             if (destinationItem && destinationItem[0] === codprod) {
                 recordsToSave.push({
                     entityName: 'AD_IBXEND',
                     fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'QTDPRO', 'APP'],
                     values: { 2: armazemDestino.toString(), 3: enderecoDestino, 4: formatQuantityForSankhya(destinationItem[1]), 5: 'S' },
                 });
             }
+
+            // Registro principal da transferência/picking
             recordsToSave.push({
                 entityName: 'AD_IBXEND',
                 fields: ['SEQITE', 'SEQBAI', 'CODARM', 'SEQEND', 'ARMDES', 'ENDDES', 'QTDPRO', 'APP'],
                 values: { 2: codarm.toString(), 3: sequencia.toString(), 4: armazemDestino.toString(), 5: enderecoDestino, 6: formatQuantityForSankhya(quantidade), 7: 'S' },
             });
 
-            if (type === 'transferencia' && criarPick === true && perms[5] === 'S') {
+            // Atualiza o ENDPIC do destino se for transferência e o usuário tiver permissão
+            if (type === 'transferencia' && canCreatePick) {
+                logger.info(`Tentando marcar o destino ${armazemDestino}-${enderecoDestino} como picking.`);
                 const updateResult = await callSankhyaService('DatasetSP.save', {
                     entityName: 'CADEND', standAlone: false, fields: ['CODARM', 'SEQEND', 'ENDPIC'],
                     records: [{ pk: { CODARM: armazemDestino.toString(), SEQEND: enderecoDestino }, values: { '2': 'S' }}]
                 });
-                if (updateResult.status !== '1') logger.warn(`Falha ao definir ENDPIC='S' no destino: ${updateResult.statusMessage}`);
-                else logger.info(`Destino ${enderecoDestino} no armazém ${armazemDestino} foi definido como um local de picking.`);
+                 if (updateResult.status !== '1') {
+                    logger.warn(`Falha ao definir ENDPIC='S' no destino: ${updateResult.statusMessage}`);
+                    // Decide se deve prosseguir ou lançar erro. Por ora, apenas loga.
+                 } else {
+                     logger.info(`Destino ${enderecoDestino} no armazém ${armazemDestino} foi definido como um local de picking.`);
+                 }
+            } else if (type === 'transferencia' && criarPick === true && !permissions.criaPick) {
+                 logger.warn(`Usuário ${username} tentou marcar destino como picking sem permissão CRIAPICK. A flag ENDPIC não será alterada.`);
+                 // Não lança erro, mas loga o aviso.
             }
         }
 
+        // Salva os itens da transação
         for (const record of recordsToSave) {
-            record.values['1'] = seqBai;
+            record.values['1'] = seqBai; // Adiciona o SEQBAI
             const itemData = await callSankhyaService('DatasetSP.save', {
                 entityName: record.entityName, fields: record.fields, standAlone: false, records: [{ values: record.values }],
             });
@@ -276,9 +371,10 @@ const executeTransaction = async (req, res, next) => {
         }
         logger.info(`${recordsToSave.length} item(ns) salvos para a transação ${seqBai}.`);
 
+        // Polling para esperar a trigger popular CODPROD
         const pollSql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
         let isPopulated = false;
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 10; i++) { // Tenta por 5 segundos
             const pollData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: pollSql });
             if (pollData.status === '1' && pollData.responseBody && parseInt(pollData.responseBody.rows[0][0], 10) >= recordsToSave.length) {
                 isPopulated = true; break;
@@ -288,6 +384,7 @@ const executeTransaction = async (req, res, next) => {
         if (!isPopulated) throw new Error('Timeout: O sistema não populou o CODPROD a tempo.');
         logger.info(`Polling de CODPROD bem-sucedido para a transação ${seqBai}.`);
 
+        // Executa a procedure de baixa/transferência
         const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', {
             stpCall: {
                 actionID: '20', procName: 'NIC_STP_BAIXA_END', rootEntity: 'AD_BXAEND',
@@ -295,23 +392,16 @@ const executeTransaction = async (req, res, next) => {
             },
         });
 
-        if (stpData.status !== '1' && stpData.status !== '2') {
-            throw new Error(stpData.statusMessage || 'Falha ao executar a procedure de baixa.');
+        // Verifica o status da procedure
+        if (stpData.status !== '1' && stpData.status !== '2') { // Status 1 ou 2 são considerados sucesso
+            throw new Error(stpData.statusMessage || 'Falha ao executar a procedure de baixa/transferência.');
         }
+
         logger.info(`Transação ${type} (SEQBAI: ${seqBai}) finalizada com sucesso para o usuário ${username}.`);
         res.json({ message: stpData.statusMessage || 'Operação concluída com sucesso!' });
 
     } catch (error) {
-        // =================================================================
-        // ALTERADO: Lógica de erro simplificada e centralizada
-        // =================================================================
-        // 1. Captura a resposta do ERP, se existir, e a anexa ao objeto de erro
-        const sankhyaResponse = error.response?.data;
-        if (sankhyaResponse) {
-            error.sankhyaResponse = sankhyaResponse;
-        }
-
-        // 2. Passa o erro "enriquecido" para o errorHandler, que cuidará do e-mail e da resposta.
+        // Passa o erro para o errorHandler centralizado
         next(error);
     }
 };
