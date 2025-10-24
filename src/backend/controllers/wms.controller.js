@@ -216,7 +216,7 @@ const getHistory = async (req, res, next) => {
 
 const executeTransaction = async (req, res, next) => {
     const { type, payload } = req.body;
-    const { username, codusu } = req.userSession; // codusu aqui é do usuário LOGADO NO APP (ex: 219)
+    const { username, codusu } = req.userSession;
     logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
 
     const formatQuantityForSankhya = (quantity) => {
@@ -284,33 +284,21 @@ const executeTransaction = async (req, res, next) => {
         // --- Lógica para Baixa, Transferência e Picking ---
         const hoje = new Date().toLocaleDateString('pt-BR');
 
-        // 1. Cria o cabeçalho AD_BXAEND usando callSankhyaAsSystem
-        const cabecalhoPayload = {
+        // 1. Cria o cabeçalho AD_BXAEND
+        const cabecalhoData = await callSankhyaService('DatasetSP.save', {
             entityName: 'AD_BXAEND',
-            fields: ['DATGER', 'USUGER'],
-            records: [{ values: { '0': hoje, '1': codusu.toString() } }], // Usa o codusu do usuário logado no app
-        };
-
-        // ****** LINHA ALTERADA ******
-        // Tenta usar callSankhyaAsSystem em vez de callSankhyaService
-        const cabecalhoData = await callSankhyaAsSystem('DatasetSP.save', cabecalhoPayload);
-        // ***************************
+            fields: ['SEQBAI', 'DATGER', 'USUGER'],
+            records: [{ values: { 1: hoje, 2: codusu.toString() } }],
+        });
 
         checkApiResponse(cabecalhoData);
-        // A lógica para obter o seqBai pode variar dependendo da resposta de callSankhyaAsSystem
-        // Ajuste conforme necessário. Supondo que a estrutura da resposta seja similar:
-         if (!cabecalhoData.responseBody.result?.[0]?.[0] && !cabecalhoData.responseBody.pk?.SEQBAI) { // Verifica se pk.SEQBAI existe
-             const errorMsg = cabecalhoData.statusMessage || 'Falha ao criar cabeçalho da transação. ID (SEQBAI) não retornado.';
-             logger.error(errorMsg + ` Resposta: ${JSON.stringify(cabecalhoData)}`);
-             throw new Error(errorMsg);
-         }
-         // Tenta pegar o SEQBAI da propriedade 'pk' se 'result' não estiver presente
-         const seqBai = cabecalhoData.responseBody.result?.[0]?.[0] || cabecalhoData.responseBody.pk?.SEQBAI;
+        if (!cabecalhoData.responseBody.result?.[0]?.[0]) {
+            throw new Error(cabecalhoData.statusMessage || 'Falha ao criar cabeçalho da transação.');
+        }
+        const seqBai = cabecalhoData.responseBody.result[0][0];
+        logger.info(`Cabeçalho da transação ${seqBai} criado para o usuário ${username} (USUGER: ${codusu}).`);
 
-        logger.info(`Cabeçalho da transação ${seqBai} criado para o usuário ${username} (USUGER definido como ${codusu}).`);
-
-
-        // --- Início: Preparação do Batch AD_IBXEND ---
+        // --- Início: Preparação do Batch ---
         const batchRecords = []; // Array para guardar os 'values' de cada item
         // Ordem dos campos DEVE corresponder aos índices ('0', '1', ...) nos 'values' abaixo
         const itemFields = ['SEQBAI', 'CODARM', 'SEQEND', 'ARMDES', 'ENDDES', 'QTDPRO', 'APP'];
@@ -381,7 +369,6 @@ const executeTransaction = async (req, res, next) => {
              // Atualiza o ENDPIC do destino se for transferência e o usuário tiver permissão
              if (type === 'transferencia' && canCreatePick) {
                  logger.info(`Tentando marcar o destino ${armazemDestino}-${enderecoDestino} como picking.`);
-                 // Usar callSankhyaService pode ser mais apropriado aqui, dependendo das permissões para alterar CADEND
                  const updateResult = await callSankhyaService('DatasetSP.save', {
                      entityName: 'CADEND', standAlone: false, fields: ['CODARM', 'SEQEND', 'ENDPIC'],
                      records: [{ pk: { CODARM: armazemDestino.toString(), SEQEND: enderecoDestino }, values: { '2': 'S' }}]
@@ -395,9 +382,9 @@ const executeTransaction = async (req, res, next) => {
                   logger.warn(`Usuário ${username} tentou marcar destino como picking sem permissão CRIAPICK. A flag ENDPIC não será alterada.`);
              }
         }
-        // --- Fim: Preparação do Batch AD_IBXEND ---
+        // --- Fim: Preparação do Batch ---
 
-        // 2. Salva todos os itens AD_IBXEND em uma única chamada (usando callSankhyaService, pois callSankhyaAsSystem pode ter restrições também)
+        // 2. Salva todos os itens AD_IBXEND em uma única chamada
         if (batchRecords.length > 0) {
             const batchSavePayload = {
                 entityName: 'AD_IBXEND',
@@ -405,8 +392,7 @@ const executeTransaction = async (req, res, next) => {
                 standAlone: false,
                 records: batchRecords // Passa o array de 'values'
             };
-            logger.debug(`Enviando batch save para AD_IBXEND com ${batchRecords.length} registros para SEQBAI ${seqBai}.`);
-            // É importante usar callSankhyaService aqui se callSankhyaAsSystem também falhar para AD_IBXEND
+            logger.debug(`Enviando batch save para AD_IBXEND com ${batchRecords.length} registros para SEQBAI ${seqBai}.`); // Payload removido do log por verbosidade
             const batchResult = await callSankhyaService('DatasetSP.save', batchSavePayload);
             checkApiResponse(batchResult);
             logger.info(`${batchRecords.length} item(ns) AD_IBXEND salvos via batch para a transação ${seqBai}.`);
@@ -436,7 +422,7 @@ const executeTransaction = async (req, res, next) => {
         }
         logger.info(`Polling de CODPROD bem-sucedido para a transação ${seqBai}.`);
 
-        // 4. Executa a procedure de baixa/transferência (mantido, usando callSankhyaService)
+        // 4. Executa a procedure de baixa/transferência (mantido)
         const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', {
             stpCall: {
                 actionID: '20', procName: 'NIC_STP_BAIXA_END', rootEntity: 'AD_BXAEND',
