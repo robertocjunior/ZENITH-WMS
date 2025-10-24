@@ -216,8 +216,19 @@ const getHistory = async (req, res, next) => {
 
 const executeTransaction = async (req, res, next) => {
     const { type, payload } = req.body;
-    const { username, codusu } = req.userSession;
+    // --- INÍCIO DA MODIFICAÇÃO ---
+    // Extrai username, codusu E jsessionid da sessão
+    const { username, codusu, jsessionid } = req.userSession;
+    // --- FIM DA MODIFICAÇÃO ---
     logger.http(`Usuário ${username} (CODUSU: ${codusu}) iniciou uma transação do tipo: ${type}.`);
+
+    // --- INÍCIO DA MODIFICAÇÃO ---
+    // Validação extra: Verifica se o jsessionid está presente na sessão
+    if (!jsessionid && (type === 'correcao' || type === 'baixa' || type === 'transferencia' || type === 'picking')) {
+         logger.error(`jsessionid ausente na sessão do usuário ${username} ao tentar executar ${type}.`);
+         return next(new Error('Informação de sessão do usuário (jsessionid) está faltando. Faça login novamente.'));
+    }
+    // --- FIM DA MODIFICAÇÃO ---
 
     const formatQuantityForSankhya = (quantity) => {
         const normalizedString = String(quantity).replace(',', '.');
@@ -270,12 +281,16 @@ const executeTransaction = async (req, res, next) => {
              const [codprod, codvol, datent, datval, qtdAnterior, marca, derivacao] = itemData.responseBody.rows[0];
              const scriptRequestBody = { runScript: { actionID: "97", refreshType: "SEL", params: { param: [ { type: "S", paramName: "CODPROD", $: codprod }, { type: "S", paramName: "CODVOL", $: codvol || '' }, { type: "F", paramName: "QTDPRO", $: newQuantity }, { type: "D", paramName: "DATENT", $: formatDbDateToApi(datent) }, { type: "D", paramName: "DATVAL", $: formatDbDateToApi(datval) } ] }, rows: { row: [{ field: [ { fieldName: "CODARM", $: codarm.toString() }, { fieldName: "SEQEND", $: sequencia.toString() } ] }] } }, clientEventList: { clientEvent: [{ "$": "br.com.sankhya.actionbutton.clientconfirm" }] } };
 
+             // A chamada ActionButtonsSP.executeScript é mantida com o token do sistema (default do callSankhyaService sem jsessionid)
              const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
              checkApiResponse(result); // Verifica se o script rodou com sucesso
 
              const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu }}]};
 
-             await callSankhyaService('DatasetSP.save', histRecord);
+             // --- INÍCIO DA MODIFICAÇÃO ---
+             // Salva o histórico AD_HISTENDAPP usando o jsessionid do usuário
+             await callSankhyaService('DatasetSP.save', histRecord, jsessionid);
+             // --- FIM DA MODIFICAÇÃO ---
 
              logger.info(`Histórico de correção salvo para SEQEND ${sequencia}.`);
              return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
@@ -284,12 +299,14 @@ const executeTransaction = async (req, res, next) => {
         // --- Lógica para Baixa, Transferência e Picking ---
         const hoje = new Date().toLocaleDateString('pt-BR');
 
-        // 1. Cria o cabeçalho AD_BXAEND
+        // --- INÍCIO DA MODIFICAÇÃO ---
+        // 1. Cria o cabeçalho AD_BXAEND usando o jsessionid do usuário
         const cabecalhoData = await callSankhyaService('DatasetSP.save', {
             entityName: 'AD_BXAEND',
             fields: ['SEQBAI', 'DATGER', 'USUGER'],
             records: [{ values: { 1: hoje, 2: codusu.toString() } }],
-        });
+        }, jsessionid); // <--- Passa o jsessionid
+        // --- FIM DA MODIFICAÇÃO ---
 
         checkApiResponse(cabecalhoData);
         if (!cabecalhoData.responseBody.result?.[0]?.[0]) {
@@ -366,13 +383,15 @@ const executeTransaction = async (req, res, next) => {
                 }
             });
 
+             // --- INÍCIO DA MODIFICAÇÃO ---
              // Atualiza o ENDPIC do destino se for transferência e o usuário tiver permissão
              if (type === 'transferencia' && canCreatePick) {
                  logger.info(`Tentando marcar o destino ${armazemDestino}-${enderecoDestino} como picking.`);
                  const updateResult = await callSankhyaService('DatasetSP.save', {
                      entityName: 'CADEND', standAlone: false, fields: ['CODARM', 'SEQEND', 'ENDPIC'],
                      records: [{ pk: { CODARM: armazemDestino.toString(), SEQEND: enderecoDestino }, values: { '2': 'S' }}]
-                 });
+                 }, jsessionid); // <--- Passa o jsessionid
+
                   if (updateResult.status !== '1') {
                      logger.warn(`Falha ao definir ENDPIC='S' no destino: ${updateResult.statusMessage}`);
                   } else {
@@ -381,10 +400,12 @@ const executeTransaction = async (req, res, next) => {
              } else if (type === 'transferencia' && criarPick === true && !permissions.criaPick) {
                   logger.warn(`Usuário ${username} tentou marcar destino como picking sem permissão CRIAPICK. A flag ENDPIC não será alterada.`);
              }
+             // --- FIM DA MODIFICAÇÃO ---
         }
         // --- Fim: Preparação do Batch ---
 
-        // 2. Salva todos os itens AD_IBXEND em uma única chamada
+        // --- INÍCIO DA MODIFICAÇÃO ---
+        // 2. Salva todos os itens AD_IBXEND em uma única chamada, usando o jsessionid
         if (batchRecords.length > 0) {
             const batchSavePayload = {
                 entityName: 'AD_IBXEND',
@@ -393,7 +414,7 @@ const executeTransaction = async (req, res, next) => {
                 records: batchRecords // Passa o array de 'values'
             };
             logger.debug(`Enviando batch save para AD_IBXEND com ${batchRecords.length} registros para SEQBAI ${seqBai}.`); // Payload removido do log por verbosidade
-            const batchResult = await callSankhyaService('DatasetSP.save', batchSavePayload);
+            const batchResult = await callSankhyaService('DatasetSP.save', batchSavePayload, jsessionid); // <--- Passa o jsessionid
             checkApiResponse(batchResult);
             logger.info(`${batchRecords.length} item(ns) AD_IBXEND salvos via batch para a transação ${seqBai}.`);
         } else {
@@ -401,6 +422,7 @@ const executeTransaction = async (req, res, next) => {
              // Considerar se deve prosseguir ou retornar erro aqui.
              // Por ora, vamos permitir prosseguir para que a STP rode, caso necessário.
         }
+        // --- FIM DA MODIFICAÇÃO ---
 
 
         // 3. Polling para esperar a trigger popular CODPROD (mantido)
@@ -423,6 +445,7 @@ const executeTransaction = async (req, res, next) => {
         logger.info(`Polling de CODPROD bem-sucedido para a transação ${seqBai}.`);
 
         // 4. Executa a procedure de baixa/transferência (mantido)
+        // A chamada ActionButtonsSP.executeSTP é mantida com o token do sistema (default do callSankhyaService sem jsessionid)
         const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', {
             stpCall: {
                 actionID: '20', procName: 'NIC_STP_BAIXA_END', rootEntity: 'AD_BXAEND',

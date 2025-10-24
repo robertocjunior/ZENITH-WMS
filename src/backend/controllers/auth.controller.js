@@ -61,29 +61,26 @@ const login = async (req, res, next) => {
         // Verifica se o usuário existe
         if (combinedResponse.status !== '1' || !combinedResponse.responseBody?.rows?.length) {
             logger.warn(`Usuário ${username} não encontrado na TSIUSU.`);
-            // Retorna erro 401 (Unauthorized) como se fosse senha inválida, para não dar dicas a atacantes
             return res.status(401).json({ message: 'Usuário ou senha inválidos.' });
         }
 
         const userData = combinedResponse.responseBody.rows[0];
         const codUsu = userData[0];
-        const nomeUsu = userData[1]; // Nome completo do usuário
+        const nomeUsu = userData[1];
         const numReg = userData[2];
-        const deviceActiveStatus = userData[3]; // Pode ser 'S', 'N' ou null
+        const deviceActiveStatus = userData[3];
 
         logger.info(`Consulta combinada retornou: CODUSU=${codUsu}, NOMEUSU=${nomeUsu}, NUMREG=${numReg}, DEVICE_ATIVO=${deviceActiveStatus}`);
 
         // Verifica Permissão de Acesso ao App (NUMREG)
         if (!numReg) {
             logger.warn(`Login bloqueado para ${username} (CODUSU: ${codUsu}). Usuário não encontrado na AD_APPPERM (NUMREG está nulo).`);
-            // Envia resposta 403 diretamente, sem lançar erro
             return res.status(403).json({ message: 'Usuário não possui permissão para acessar este aplicativo.' });
         }
         logger.info(`Permissão de acesso confirmada (NUMREG ${numReg}) para o CODUSU ${codUsu}.`);
 
         // --- 3. Tratamento do Status do Dispositivo ---
         if (deviceActiveStatus === null) {
-            // Dispositivo não existe para este usuário/token, precisa registrar
             logger.info(`Dispositivo ${deviceTokenToUse} não encontrado para CODUSU ${codUsu}. Registrando...`);
             const savePayload = {
                 entityName: 'AD_DISPAUT',
@@ -91,63 +88,63 @@ const login = async (req, res, next) => {
                 records: [{
                     values: {
                         0: codUsu,
-                        1: deviceTokenToUse, // Usa o token original (não sanitizado para SQL)
-                        2: sanitizeStringForSql(descrDisp), // Sanitiza descrição
-                        3: 'N', // Registra como inativo
+                        1: deviceTokenToUse,
+                        2: sanitizeStringForSql(descrDisp),
+                        3: 'N',
                         4: formatDateForSankhya(new Date())
                     }
                 }],
             };
-
-            const saveResponse = await callSankhyaAsSystem('DatasetSP.save', savePayload); // Usa callSankhyaAsSystem
-
+            const saveResponse = await callSankhyaAsSystem('DatasetSP.save', savePayload);
             if (saveResponse.status !== '1') {
                 logger.error(`Falha ao registrar novo dispositivo ${deviceTokenToUse} para CODUSU ${codUsu}. Resposta: ${JSON.stringify(saveResponse)}`);
-                // Neste caso, lançamos um erro pois é uma falha inesperada no registro
                 const error = new Error(`Falha ao salvar dispositivo. Status: ${saveResponse.status} | Mensagem: ${saveResponse.statusMessage || 'Erro desconhecido'}`);
                 error.sankhyaResponse = saveResponse;
-                throw error; // Este erro ainda irá para o errorHandler
+                throw error;
             }
-
             logger.info(`Novo dispositivo ${deviceTokenToUse} registrado (inativo) para CODUSU ${codUsu}.`);
-            // Retorna 403 diretamente
             return res.status(403).json({ message: 'Dispositivo novo detectado. Solicite a um administrador para ativá-lo.', deviceToken: deviceTokenToUse });
-
         } else if (deviceActiveStatus === 'N') {
-            // Dispositivo existe mas está inativo
             logger.warn(`Dispositivo ${deviceTokenToUse} encontrado para CODUSU ${codUsu}, mas está inativo.`);
-            // Retorna 403 diretamente
             return res.status(403).json({ message: 'Este dispositivo está registrado, mas não está ativo.', deviceToken: deviceTokenToUse });
         } else {
-            // Dispositivo existe e está ativo ('S')
             logger.info(`Dispositivo ${deviceTokenToUse} autorizado para CODUSU ${codUsu}.`);
         }
 
-        // --- 4. Validação de Senha (Somente se usuário, permissão e dispositivo estiverem OK) ---
+        // --- 4. Validação de Senha ---
         logger.debug(`Validando senha para ${username} via MobileLoginSP.login`);
         const loginResponse = await callSankhyaService('MobileLoginSP.login', {
-            NOMUSU: { $: username.toUpperCase() }, // Usa username original (API pode precisar)
+            NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
         });
 
-        // Tratamento de erro específico para MobileLoginSP (Senha inválida)
         if (loginResponse.status !== '1') {
             const errorMessage = loginResponse.statusMessage || 'Credenciais inválidas.';
             logger.warn(`Falha na validação de senha para ${username}: ${errorMessage}`);
-             // Retorna 401 diretamente
             return res.status(401).json({ message: 'Usuário ou senha inválidos.' });
         }
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
-        // --- 5. Geração do Token JWT e Resposta de Sucesso ---
-        const sessionPayload = { username: username, codusu: codUsu, nomeusu: nomeUsu, numreg: numReg }; // Inclui nomeusu completo
+        // --- INÍCIO DA MODIFICAÇÃO ---
+        // Extrai o jsessionid da resposta do login
+        const jsessionid = loginResponse.responseBody?.jsessionid?.$ || null;
+        if (!jsessionid) {
+            logger.error(`jsessionid não encontrado na resposta de MobileLoginSP.login para ${username}.`);
+            throw new Error("Falha ao obter o jsessionid necessário da API Sankhya.");
+        }
+        logger.info(`jsessionid obtido para ${username}: ${jsessionid.substring(0, 10)}...`); // Log truncado por segurança
+
+        // --- 5. Geração do Token JWT ---
+        // Inclui o jsessionid no payload do token JWT
+        const sessionPayload = { username: username, codusu: codUsu, nomeusu: nomeUsu, numreg: numReg, jsessionid: jsessionid };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
+        // --- FIM DA MODIFICAÇÃO ---
 
         res.cookie('sessionToken', sessionToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
-            maxAge: 8 * 60 * 60 * 1000, // 8 horas
+            maxAge: 8 * 60 * 60 * 1000,
         });
 
         const isTestEnvironment = (process.env.SANKHYA_API_URL || '').includes('sandbox');
@@ -157,23 +154,19 @@ const login = async (req, res, next) => {
 
         logger.info(`Usuário ${username} logado com sucesso com device ${deviceTokenToUse}.`);
 
-        // --- INÍCIO DA CORREÇÃO ---
-        // Resposta para o frontend (Incluindo sessionToken no corpo)
         res.json({
-            username: username, // Retorna o username original
+            username: username,
             codusu: codUsu,
-            nomeusu: nomeUsu, // Retorna nome completo
+            nomeusu: nomeUsu,
             numreg: numReg,
-            deviceToken: deviceTokenToUse, // Retorna o token usado/gerado
-            sessionToken: sessionToken, // <<-- DESCOMENTADO: Necessário para o estado do frontend
+            deviceToken: deviceTokenToUse,
+            sessionToken: sessionToken,
             isTestEnvironment: isTestEnvironment
         });
-        // --- FIM DA CORREÇÃO ---
 
     } catch (error) {
-        // Apenas erros realmente inesperados (como falha na consulta combinada ou falha ao registrar dispositivo) chegarão aqui
         logger.error(`Falha inesperada no processo de login para ${username}: ${error.message}`, { stack: error.stack });
-        next(error); // Passa para o errorHandler para log "Erro não tratado" e email
+        next(error);
     }
 };
 

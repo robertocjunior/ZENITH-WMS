@@ -115,20 +115,32 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
     }
 }
 
-// Modificado para usar sankhyaApi
-async function callSankhyaService(serviceName, requestBody) {
-    let token = await getSystemBearerToken(); // Obtem o token (cacheado ou novo)
-    // Usa a instância sankhyaApi e URL relativa
+// --- INÍCIO DA MODIFICAÇÃO (JSESSIONID) ---
+// Modificado para usar sankhyaApi e adicionar jsessionid
+async function callSankhyaService(serviceName, requestBody, userJSessionId = null) {
     const url = `/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
+    let headers = {};
+
+    // 1. SEMPRE obter e definir o Bearer Token do sistema
+    let token = await getSystemBearerToken(); // Obtem o token (cacheado ou novo)
+    headers['Authorization'] = `Bearer ${token}`;
+    logger.http(`Executando ${serviceName} com Bearer Token do sistema.`);
+
+    // 2. SE userJSessionId for fornecido, ADICIONAR o Cookie
+    if (userJSessionId) {
+        headers['Cookie'] = `JSESSIONID=${userJSessionId}`;
+        logger.http(`ADICIONANDO Cookie JSESSIONID do usuário para ${serviceName}.`);
+    }
+
     try {
         const response = await sankhyaApi.post(
             url,
             { requestBody },
-            { headers: { Authorization: `Bearer ${token}` } }
+            { headers: headers } // Passa os headers (com Bearer e talvez Cookie)
         );
         const responseData = response.data;
 
-        // --- LÓGICA DE RETENTATIVA (mantida, mas usa sankhyaApi) ---
+        // --- LÓGICA DE RETENTATIVA (mantida, mas usa sankhyaApi e headers corretos) ---
         const isTokenExpiredError = responseData.error?.descricao?.includes("Bearer Token inválido ou Expirado");
         const isNotLoggedInError = responseData.status === '0' && responseData.statusMessage?.includes("Usuário não logado");
         const isUnauthorizedError = responseData.status === '0' && responseData.statusMessage?.includes("Não autorizado");
@@ -136,8 +148,9 @@ async function callSankhyaService(serviceName, requestBody) {
         if (isTokenExpiredError || isNotLoggedInError || isUnauthorizedError) {
             logger.warn(`Token de sistema inválido ou não autorizado em ${serviceName}. Forçando renovação... (Mensagem: ${responseData.statusMessage || 'Token Expirado'})`);
             token = await getSystemBearerToken(true); // Força refresh
-            // Retry com sankhyaApi
-            const retryResponse = await sankhyaApi.post(url, { requestBody }, { headers: { Authorization: `Bearer ${token}` } });
+            headers['Authorization'] = `Bearer ${token}`; // Atualiza o token no header
+            // O Cookie (se existir) já está em 'headers'
+            const retryResponse = await sankhyaApi.post(url, { requestBody }, { headers: headers });
             logger.info(`Requisição ${serviceName} reenviada com sucesso após renovação do token.`);
             return retryResponse.data;
         }
@@ -146,7 +159,7 @@ async function callSankhyaService(serviceName, requestBody) {
         if (error.response && error.response.data) {
             const errorData = error.response.data;
 
-            // --- LÓGICA DE RETENTATIVA NO CATCH (mantida, mas usa sankhyaApi) ---
+            // --- LÓGICA DE RETENTATIVA NO CATCH (mantida, mas usa sankhyaApi e headers corretos) ---
             const isTokenExpiredError = errorData.error?.descricao?.includes("Bearer Token inválido ou Expirado");
             const isNotLoggedInError = errorData.status === '0' && errorData.statusMessage?.includes("Usuário não logado");
             const isUnauthorizedError = errorData.status === '0' && errorData.statusMessage?.includes("Não autorizado");
@@ -154,9 +167,10 @@ async function callSankhyaService(serviceName, requestBody) {
             if (isTokenExpiredError || isNotLoggedInError || isUnauthorizedError) {
                 logger.warn(`Token de sistema inválido ou não autorizado (em erro HTTP ${error.response.status}) para ${serviceName}. Forçando renovação... (Mensagem: ${errorData.statusMessage || 'Token Expirado'})`);
                 token = await getSystemBearerToken(true); // Força refresh
+                headers['Authorization'] = `Bearer ${token}`; // Atualiza o token no header
                 try {
                      // Retry com sankhyaApi
-                    const retryResponse = await sankhyaApi.post(url, { requestBody }, { headers: { Authorization: `Bearer ${token}` } });
+                    const retryResponse = await sankhyaApi.post(url, { requestBody }, { headers: headers });
                     logger.info(`Requisição ${serviceName} reenviada com sucesso após renovação do token.`);
                     return retryResponse.data;
                 } catch (retryError) {
@@ -173,6 +187,7 @@ async function callSankhyaService(serviceName, requestBody) {
         throw serviceError;
     }
 }
+// --- FIM DA MODIFICAÇÃO (JSESSIONID) ---
 
 // Exportamos as funções para que os controllers possam usá-las
 module.exports = {
