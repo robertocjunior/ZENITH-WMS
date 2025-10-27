@@ -65,7 +65,7 @@ const login = async (req, res, next) => {
         }
 
         const userData = combinedResponse.responseBody.rows[0];
-        const codUsu = userData[0];
+        const codUsu = userData[0]; // Captura o codUsu aqui
         const nomeUsu = userData[1];
         const numReg = userData[2];
         const deviceActiveStatus = userData[3];
@@ -95,6 +95,7 @@ const login = async (req, res, next) => {
                     }
                 }],
             };
+            // Usar callSankhyaAsSystem pois ainda não temos jsessionid do usuário
             const saveResponse = await callSankhyaAsSystem('DatasetSP.save', savePayload);
             if (saveResponse.status !== '1') {
                 logger.error(`Falha ao registrar novo dispositivo ${deviceTokenToUse} para CODUSU ${codUsu}. Resposta: ${JSON.stringify(saveResponse)}`);
@@ -113,10 +114,12 @@ const login = async (req, res, next) => {
 
         // --- 4. Validação de Senha ---
         logger.debug(`Validando senha para ${username} via MobileLoginSP.login`);
+        // **NÃO** passar jsessionid ou codusu aqui, pois é a autenticação inicial
         const loginResponse = await callSankhyaService('MobileLoginSP.login', {
             NOMUSU: { $: username.toUpperCase() },
             INTERNO: { $: password },
         });
+
 
         if (loginResponse.status !== '1') {
             const errorMessage = loginResponse.statusMessage || 'Credenciais inválidas.';
@@ -125,7 +128,7 @@ const login = async (req, res, next) => {
         }
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
-        // --- INÍCIO DA MODIFICAÇÃO ---
+        // --- INÍCIO DA MODIFICAÇÃO (EXTRAÇÃO JSESSIONID) ---
         // Extrai o jsessionid da resposta do login
         const jsessionid = loginResponse.responseBody?.jsessionid?.$ || null;
         if (!jsessionid) {
@@ -160,7 +163,7 @@ const login = async (req, res, next) => {
             nomeusu: nomeUsu,
             numreg: numReg,
             deviceToken: deviceTokenToUse,
-            sessionToken: sessionToken,
+            sessionToken: sessionToken, // O token JWT local, não o do Sankhya
             isTestEnvironment: isTestEnvironment
         });
 
