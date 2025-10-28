@@ -23,11 +23,13 @@ const path = require('path');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
+const semver = require('semver'); // **** ADICIONADO **** (Requer: npm install semver)
 
 const logger = require('./logger'); 
 const allRoutes = require('./src/backend/routes');
 const { initializeSankhyaService } = require('./src/backend/services/sankhya.service');
 const { errorHandler } = require('./src/backend/middleware/errorHandler');
+const { checkAppVersion } = require('./src/backend/middleware/versionCheck'); // **** ADICIONADO ****
 
 const app = express();
 const PORT = process.env.PORT || 3030;
@@ -49,7 +51,9 @@ const apiLimiter = rateLimit({
 });
 
 // --- Rotas da API ---
-app.use('/api', apiLimiter, allRoutes);
+// **** MODIFICADO: Adicionado checkAppVersion ****
+// O checkAppVersion é aplicado a todas as rotas /api
+app.use('/api', apiLimiter, checkAppVersion, allRoutes);
 
 // --- Lógica para Servir Arquivos do Frontend ---
 // Apenas ativa a interface web se a variável de ambiente API_ONLY_MODE não for 'true'
@@ -90,6 +94,15 @@ app.use(errorHandler);
 // --- Inicialização do Servidor ---
 const startServer = async () => {
     try {
+        // Validação da versão mínima no início (opcional, mas bom para log)
+        const minVersion = process.env.MIN_APP_VERSION || '1.0.0';
+        if (!semver.valid(minVersion)) {
+            logger.error(`MIN_APP_VERSION ("${minVersion}") no .env é inválida. Use formato SemVer (ex: 1.0.13).`);
+            throw new Error('Configuração de versão inválida.');
+        } else {
+            logger.info(`Versão mínima do App configurada: ${minVersion}`);
+        }
+
         await initializeSankhyaService();
         app.listen(PORT, '0.0.0.0', () =>
             logger.info(`✅ Servidor rodando em http://localhost:${PORT}`)
@@ -100,4 +113,4 @@ const startServer = async () => {
     }
 };
 
-startServer();
+startServer(); 
