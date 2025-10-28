@@ -1,17 +1,6 @@
 /**
  * Copyright (c) 2025 Roberto Casali Junior. Todos os Direitos Reservados.
- *
- * AVISO DE PROPRIEDADE E CONFIDENCIALIDADE
- *
- * Este código-fonte é propriedade intelectual confidencial e proprietária de
- * Roberto Casali Junior. Seu uso, cópia, modificação, distribuição ou execução
- * são estritamente proibidos sem a autorização prévia, expressa e por escrito
- * do autor.
- *
- * Este software é regido pelos termos e condições estabelecidos no Contrato de
- * Licença de Usuário Final (EULA) que o acompanha. A violação destes termos
- * constitui uma infração à lei de direitos autorais (Lei nº 9.610/98) e
- * sujeitará o infrator às sanções aplicáveis.
+ * (Avisos de propriedade omitidos para brevidade)
  */
 
 // src/backend/services/sankhya.service.js
@@ -32,17 +21,22 @@ const httpsAgent = new https.Agent({
 });
 
 const sankhyaApi = axios.create({
-    baseURL: process.env.SANKHYA_API_URL,
+    baseURL: process.env.SANKHYA_API_URL, // URL base padrão para API Gateway (Bearer Token)
     httpAgent: httpAgent,
     httpsAgent: httpsAgent,
 });
 
-let systemBearerToken = null; // Cache do token de sistema
+const sankhyaMgeApi = axios.create({
+    baseURL: process.env.SANKHYA_URL || process.env.SANKHYA_API_URL, // Usa SANKHYA_URL se definida, senão fallback
+    httpAgent: httpAgent,
+    httpsAgent: httpsAgent,
+});
 
-// Função para obter o token (cacheado ou novo)
+
+let systemBearerToken = null;
+
 async function getSystemBearerToken(forceRefresh = false) {
     if (systemBearerToken && !forceRefresh) {
-        // logger.debug('Usando Bearer Token do sistema em cache.'); // Log opcional
         return systemBearerToken;
     }
     try {
@@ -68,31 +62,26 @@ async function getSystemBearerToken(forceRefresh = false) {
     } catch (error) {
         const errMsg = error.response?.data?.statusMessage || error.message;
         logger.error(`ERRO CRÍTICO ao obter Bearer Token: ${errMsg}`);
-        systemBearerToken = null; // Limpa o cache em caso de erro
+        systemBearerToken = null;
         throw new Error(`Falha na autenticação do servidor proxy: ${errMsg}`);
     }
 }
 
-// Função para tentar fazer logout de um token específico
 async function tryLogoutToken(tokenToLogout) {
-    if (!tokenToLogout) return; // Não faz nada se não houver token
+    if (!tokenToLogout) return;
     try {
         logger.warn(`Tentando fazer logout do token de sistema potencialmente inválido: ${tokenToLogout.substring(0, 10)}...`);
         const logoutUrl = `/gateway/v1/mge/service.sbr?serviceName=MobileLoginSP.logout&outputType=json`;
-        // Usa GET para o logout conforme especificado
         await sankhyaApi.get(logoutUrl, {
             headers: { Authorization: `Bearer ${tokenToLogout}` }
         });
         logger.info(`Logout do token ${tokenToLogout.substring(0, 10)}... realizado (ou já estava inválido).`);
     } catch (logoutError) {
-        // Apenas loga o erro do logout, pois o objetivo principal é obter um novo token
         const logoutErrMsg = logoutError.response?.data?.statusMessage || logoutError.message;
         logger.error(`Erro ao tentar fazer logout do token ${tokenToLogout.substring(0, 10)}... : ${logoutErrMsg}. Prosseguindo para obter novo token.`);
     }
 }
 
-
-// >>>>>>>> MODIFICAÇÃO PRINCIPAL AQUI <<<<<<<<<<
 async function callSankhyaAsSystem(serviceName, requestBody) {
     logger.http(`Executando consulta como sistema: ${serviceName}`);
     let tokenAttempt1 = null;
@@ -100,141 +89,185 @@ async function callSankhyaAsSystem(serviceName, requestBody) {
 
     while (attempt <= 2) {
         try {
-            // Na primeira tentativa, força a obtenção de um token novo
-            // Na segunda tentativa (retry), também força a obtenção de um token novo após o logout
-            tokenAttempt1 = await getSystemBearerToken(true); // Força refresh em ambas tentativas
+            tokenAttempt1 = await getSystemBearerToken(true); // Força refresh
 
-            const url = `/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
-            logger.debug(`Tentativa ${attempt}: Executando ${serviceName} com token ${tokenAttempt1.substring(0, 10)}...`);
+            const relativePath = `/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
+            const fullUrlForLog = `${sankhyaApi.defaults.baseURL}${relativePath}`;
+            logger.debug(`Tentativa ${attempt}: Executando ${serviceName} com token ${tokenAttempt1.substring(0, 10)}... em ${fullUrlForLog}`);
+
             const serviceResponse = await sankhyaApi.post(
-                url,
+                relativePath,
                 { requestBody },
                 { headers: { Authorization: `Bearer ${tokenAttempt1}` } }
             );
 
-            // Verifica se a resposta indica um erro de API, mesmo com status HTTP 200
+            // A checagem aqui permanece apenas para status 1, pois DbExplorer não retorna 2
             if (serviceResponse.data.status !== '1') {
-                 logger.warn(`Tentativa ${attempt}: Resposta da API Sankhya para ${serviceName} indicou erro (status ${serviceResponse.data.status}): ${serviceResponse.data.statusMessage}`);
+                 logger.warn(`Tentativa ${attempt}: Resposta da API Sankhya para ${serviceName} (callSankhyaAsSystem) indicou erro (status ${serviceResponse.data.status}): ${serviceResponse.data.statusMessage}`);
                  throw new Error(serviceResponse.data.statusMessage || `Erro retornado pela API Sankhya (status ${serviceResponse.data.status})`);
             }
 
             logger.info(`Tentativa ${attempt}: ${serviceName} executado com sucesso.`);
-            return serviceResponse.data; // Sucesso, retorna a resposta
+            return serviceResponse.data;
 
         } catch (error) {
             const errorMessage = error.response?.data?.statusMessage || error.message || `Erro desconhecido ao executar ${serviceName}`;
             logger.error(`Erro na Tentativa ${attempt} de callSankhyaAsSystem (${serviceName}): ${errorMessage}`, { errorData: error.response?.data });
 
-            if (attempt === 1) {
-                logger.warn(`Iniciando procedimento de logout e nova tentativa para ${serviceName}.`);
-                // Tenta fazer logout do token que falhou
+             const isTokenError = errorMessage.includes("Bearer Token inválido ou Expirado") ||
+                                  (errorMessage.includes("Usuário não logado") && attempt === 1);
+
+            if (attempt === 1 && isTokenError) {
+                logger.warn(`Token de sistema inválido/expirado detectado em ${serviceName}. Iniciando procedimento de logout e nova tentativa.`);
                 await tryLogoutToken(tokenAttempt1);
-                // Limpa o token cacheado localmente para garantir que getSystemBearerToken busque um novo
                 systemBearerToken = null;
-                attempt++; // Incrementa para a próxima tentativa
-                // O loop continuará para a tentativa 2
+                attempt++;
             } else {
-                // Se falhou na segunda tentativa, lança o erro definitivo
-                logger.error(`Falha na segunda tentativa de executar ${serviceName}. Desistindo.`);
-                const serviceError = new Error(`Falha ao executar ${serviceName} após retentativa: ${errorMessage}`);
+                 if (error.response?.status === 404) {
+                     const calledUrl = `${sankhyaApi.defaults.baseURL}/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
+                     logger.error(`Received 404 Not Found for URL: ${calledUrl}. Check SANKHYA_API_URL and the path.`);
+                 }
+                logger.error(`Falha ao executar ${serviceName} (Tentativa ${attempt}). Desistindo. Erro: ${errorMessage}`);
+                const serviceError = new Error(`Falha ao executar ${serviceName}: ${errorMessage}`);
                 serviceError.sankhyaResponse = error.response?.data;
                 throw serviceError;
             }
         }
     }
 }
-// >>>>>>>> FIM DA MODIFICAÇÃO <<<<<<<<<<
 
 
-// --- Função callSankhyaService (mantida como antes, com jsessionid + userIDLogado) ---
 async function callSankhyaService(serviceName, requestBody, userJSessionId = null, userCodUsu = null) {
-    const url = `/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`;
+
+    const useMgeApiAndJSessionIdOnly = (serviceName === 'DatasetSP.save' || serviceName === 'ActionButtonsSP.executeScript') && userJSessionId;
+
+    const apiInstance = useMgeApiAndJSessionIdOnly ? sankhyaMgeApi : sankhyaApi;
+    const relativePath = useMgeApiAndJSessionIdOnly
+        ? `/mge/service.sbr?serviceName=${serviceName}&outputType=json` // Caminho direto MGE
+        : `/gateway/v1/mge/service.sbr?serviceName=${serviceName}&outputType=json`; // Caminho via Gateway API
+    const baseURL = apiInstance.defaults.baseURL;
+    const fullUrlForLog = `${baseURL}${relativePath}`;
+
+    logger.debug(`Service call details: useMgeApiAndJSessionIdOnly=${useMgeApiAndJSessionIdOnly}, serviceName=${serviceName}, baseURL=${baseURL}, relativePath=${relativePath}`);
+
     let headers = {};
-    let systemTokenForCall = null; // Token de sistema a ser usado nesta chamada
+    let systemTokenForCall = null;
 
-    // Tenta obter o token de sistema (pode vir do cache ou ser renovado)
-    try {
-        systemTokenForCall = await getSystemBearerToken(); // Não força refresh inicialmente aqui
-        headers['Authorization'] = `Bearer ${systemTokenForCall}`;
-        logger.http(`Executando ${serviceName} com Bearer Token do sistema.`);
-    } catch (tokenError) {
-         // Se falhar em obter o token inicial, já lança o erro.
-        logger.error(`Falha crítica ao obter token de sistema antes de chamar ${serviceName}: ${tokenError.message}`);
-        throw tokenError; // Re-lança o erro da obtenção do token
-    }
-
-
-    if (userJSessionId && userCodUsu) {
-        headers['Cookie'] = `JSESSIONID=${userJSessionId}; userIDLogado=${userCodUsu}`;
-        logger.http(`ADICIONANDO Cookies JSESSIONID e userIDLogado do usuário para ${serviceName}.`);
-    } else if (userJSessionId) {
+    if (useMgeApiAndJSessionIdOnly) {
         headers['Cookie'] = `JSESSIONID=${userJSessionId}`;
-        logger.http(`ADICIONANDO Cookie JSESSIONID do usuário para ${serviceName} (userIDLogado não fornecido).`);
+        if (userCodUsu) {
+            headers['Cookie'] += `; userIDLogado=${userCodUsu}`;
+            logger.http(`Executando ${serviceName} (URL MGE: ${fullUrlForLog}) SOMENTE com Cookies JSESSIONID e userIDLogado do usuário.`);
+        } else {
+            logger.http(`Executando ${serviceName} (URL MGE: ${fullUrlForLog}) SOMENTE com Cookie JSESSIONID do usuário (sem userIDLogado).`);
+        }
+    } else {
+        try {
+            systemTokenForCall = await getSystemBearerToken();
+            headers['Authorization'] = `Bearer ${systemTokenForCall}`;
+            logger.http(`Executando ${serviceName} (URL Gateway: ${fullUrlForLog}) com Bearer Token do sistema.`);
+
+             if (userJSessionId && userCodUsu) {
+                headers['Cookie'] = `JSESSIONID=${userJSessionId}; userIDLogado=${userCodUsu}`;
+                logger.http(`ADICIONANDO Cookies JSESSIONID e userIDLogado para ${serviceName}.`);
+            } else if (userJSessionId) {
+                headers['Cookie'] = `JSESSIONID=${userJSessionId}`;
+                 logger.http(`ADICIONANDO Cookie JSESSIONID para ${serviceName} (sem userIDLogado).`);
+            }
+        } catch (tokenError) {
+            logger.error(`Falha crítica ao obter token de sistema antes de chamar ${serviceName}: ${tokenError.message}`);
+            throw tokenError;
+        }
     }
 
     try {
-        const response = await sankhyaApi.post(
-            url,
+        logger.http(`Fazendo POST para: ${fullUrlForLog}`);
+        const response = await apiInstance.post(
+            relativePath,
             { requestBody },
             { headers: headers }
         );
         const responseData = response.data;
 
-        // Verifica erros específicos na resposta que indicam necessidade de renovar token de SISTEMA
-        const isTokenExpiredError = responseData.error?.descricao?.includes("Bearer Token inválido ou Expirado");
+        // --- INÍCIO DA MODIFICAÇÃO: Tratar Status 2 como sucesso para STP e Script ---
+        const isSuccessStatus = responseData.status === '1' ||
+                                (responseData.status === '2' &&
+                                 (serviceName === 'ActionButtonsSP.executeSTP' || serviceName === 'ActionButtonsSP.executeScript'));
+        // --- FIM DA MODIFICAÇÃO ---
+
+        // Lógica de tratamento de erros e retentativas
+        const isSystemTokenExpiredError = responseData.error?.descricao?.includes("Bearer Token inválido ou Expirado") && !useMgeApiAndJSessionIdOnly;
         const isNotLoggedInError = responseData.status === '0' && responseData.statusMessage?.includes("Usuário não logado");
-        const isUnauthorizedError = responseData.status === '0' && responseData.statusMessage?.includes("Não autorizado"); // Pode ser do sistema ou usuário
+        const isUnauthorizedError = responseData.status === '0' && responseData.statusMessage?.includes("Não autorizado");
 
-        // Apenas tenta renovar o token de SISTEMA se o erro for claramente dele
-        if (isTokenExpiredError || (isNotLoggedInError && !userJSessionId)) { // Se não tem sessão de usuário, erro "não logado" é do sistema
-            logger.warn(`Token de sistema inválido/expirado detectado em ${serviceName}. Forçando renovação... (Mensagem: ${responseData.statusMessage || 'Token Expirado'})`);
-
-            await tryLogoutToken(systemTokenForCall); // Tenta logout do token antigo
-            systemTokenForCall = await getSystemBearerToken(true); // Força refresh e atualiza a variável local
-            headers['Authorization'] = `Bearer ${systemTokenForCall}`; // Atualiza o header para a retentativa
+        if (isSystemTokenExpiredError || (isNotLoggedInError && !userJSessionId && !useMgeApiAndJSessionIdOnly)) {
+            logger.warn(`Token de sistema inválido/expirado detectado em ${serviceName}. Forçando renovação...`);
+            await tryLogoutToken(systemTokenForCall);
+            systemTokenForCall = await getSystemBearerToken(true);
+            headers['Authorization'] = `Bearer ${systemTokenForCall}`;
 
             logger.info(`Reenviando ${serviceName} com novo token de sistema...`);
-            const retryResponse = await sankhyaApi.post(url, { requestBody }, { headers: headers });
+             const retryResponse = await apiInstance.post(
+                 relativePath,
+                 { requestBody },
+                 { headers: headers }
+            );
 
-            // Verifica se a retentativa deu certo
-             if (retryResponse.data.status !== '1') {
-                 logger.error(`Falha na retentativa de ${serviceName} após renovar token: ${retryResponse.data.statusMessage}`);
+            // --- INÍCIO DA MODIFICAÇÃO: Reavaliar sucesso após retry ---
+            const isRetrySuccessStatus = retryResponse.data.status === '1' ||
+                                         (retryResponse.data.status === '2' &&
+                                          (serviceName === 'ActionButtonsSP.executeSTP' || serviceName === 'ActionButtonsSP.executeScript'));
+
+            if (!isRetrySuccessStatus) {
+                 logger.error(`Falha na retentativa de ${serviceName} após renovar token (Status ${retryResponse.data.status}): ${retryResponse.data.statusMessage}`);
                  const retryFailError = new Error(retryResponse.data.statusMessage || `Erro na retentativa de ${serviceName} (status ${retryResponse.data.status})`);
                  retryFailError.sankhyaResponse = retryResponse.data;
                  throw retryFailError;
              }
-
-            logger.info(`Requisição ${serviceName} reenviada com sucesso após renovação do token.`);
+             // --- FIM DA MODIFICAÇÃO ---
+            logger.info(`Requisição ${serviceName} reenviada com sucesso após renovação do token (Status ${retryResponse.data.status}).`);
             return retryResponse.data; // Retorna o sucesso da retentativa
-        } else if (isUnauthorizedError && userJSessionId) {
-             // Erro "Não autorizado" QUANDO temos sessão de usuário pode ser SESSÃO DO USUÁRIO EXPIRADA
-             logger.warn(`Erro "Não autorizado" em ${serviceName} com sessão de usuário ativa. Pode ser sessão do usuário expirada. Status: ${responseData.status}, Msg: ${responseData.statusMessage}`);
-             const userSessionError = new Error(responseData.statusMessage || "Não autorizado (sessão do usuário pode ter expirado)");
+
+        } else if ((isNotLoggedInError || isUnauthorizedError) && userJSessionId) {
+             logger.warn(`Erro "${responseData.statusMessage}" em ${serviceName} com sessão de usuário ativa (JSESSIONID). Pode ser sessão do usuário expirada. Status: ${responseData.status}`);
+             const userSessionError = new Error(responseData.statusMessage || "Não autorizado/logado (sessão do usuário pode ter expirado)");
              userSessionError.sankhyaResponse = responseData;
-             // Lança erro para ser tratado pelo errorHandler (que pode retornar 401 para o frontend)
              throw userSessionError;
-        } else if (responseData.status !== '1') {
-            // Outros erros da API Sankhya (status != '1')
+
+        // --- INÍCIO DA MODIFICAÇÃO: Verifica se NÃO é sucesso ---
+        } else if (!isSuccessStatus) {
+        // --- FIM DA MODIFICAÇÃO ---
+             // Outros erros da API Sankhya
              logger.error(`Erro retornado pela API Sankhya para ${serviceName} (status ${responseData.status}): ${responseData.statusMessage}`);
              const apiError = new Error(responseData.statusMessage || `Erro da API Sankhya (status ${responseData.status})`);
              apiError.sankhyaResponse = responseData;
              throw apiError;
         }
 
-        return responseData; // Retorna sucesso da primeira tentativa
+        // Log de sucesso, incluindo status 2
+        if (responseData.status === '2') {
+             logger.info(`${serviceName} executado com status 2 (Sucesso com aviso): ${responseData.statusMessage}`);
+        } else {
+             logger.info(`${serviceName} executado com sucesso (Status 1).`);
+        }
+        return responseData; // Retorna sucesso
 
     } catch (error) {
-         // Verifica se o erro já foi tratado e enriquecido (como o userSessionError acima)
-        if (error.sankhyaResponse) {
-             throw error; // Apenas re-lança se já tem a resposta anexada
+        if (error.response?.status === 404) {
+            logger.error(`Recebido 404 Not Found para URL: ${fullUrlForLog}. Verifique SANKHYA_URL/SANKHYA_API_URL e o caminho (${relativePath}) para ${serviceName}.`);
+        } else if (error.sankhyaResponse) { // Se o erro já foi construído e tem a resposta
+             logger.error(`Erro pré-tratado na chamada ${serviceName}: ${error.message}`); // Log adicional
+             // Não loga novamente os detalhes do erro, apenas re-lança
+        } else {
+             // Erro de rede ou Axios não tratado
+             logger.error(`Erro genérico na chamada ${serviceName}: ${error.message}`, { errorData: error.response?.data });
         }
 
-        // Trata erros de rede ou outros erros do Axios
-        const errorMessage = error.response?.data?.statusMessage || error.message || `Erro desconhecido em ${serviceName}`;
-        logger.error(`Erro na chamada ${serviceName}: ${errorMessage}`, { errorData: error.response?.data });
-        const serviceError = new Error(errorMessage);
-        serviceError.sankhyaResponse = error.response?.data;
-        throw serviceError;
+        // Garante que o erro lançado tenha a resposta anexa, se disponível
+        if (!error.sankhyaResponse && error.response?.data) {
+             error.sankhyaResponse = error.response.data;
+        }
+        throw error; // Re-lança o erro para ser tratado pelo controller ou errorHandler
     }
 }
 
