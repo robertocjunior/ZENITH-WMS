@@ -18,31 +18,19 @@ const isCacheValid = (cacheEntry) => {
 };
 // --- Fim: Configuração do Cache ---
 
-// Função checkApiResponse original - não trata status 2 como sucesso
-// const checkApiResponse = (data) => {
-//     if (!data || data.status !== '1') {
-//         const errorMessage = data?.statusMessage || 'Falha na comunicação com a API Sankhya.';
-//         const error = new Error(errorMessage);
-//         error.sankhyaResponse = data;
-//         throw error;
-//     }
-// };
-
-// Nova função checkApiResponse - trata status 2 como sucesso APENAS para ActionButtonsSP.executeSTP
+// --- INÍCIO DA MODIFICAÇÃO: checkApiResponse volta a checar apenas STATUS 1 ---
+// A lógica de tratar status 2 foi movida *completamente* para callSankhyaService
+// Esta função agora só valida se a resposta é estritamente "1" (sucesso)
 const checkApiResponse = (data, serviceName = '') => {
-    const isSuccess = data && (data.status === '1' || (serviceName === 'ActionButtonsSP.executeSTP' && data.status === '2'));
-    if (!isSuccess) {
-        const errorMessage = data?.statusMessage || `Falha na comunicação com a API Sankhya (${serviceName}). Status: ${data?.status}`;
+    if (!data || data.status !== '1') {
+        const errorMessage = data?.statusMessage || `Falha na comunicação com a API Sankhya (${serviceName}). Status: ${data?.status || 'desconhecido'}`;
         const error = new Error(errorMessage);
         error.sankhyaResponse = data;
-        logger.error(`checkApiResponse falhou para ${serviceName}: ${errorMessage}`); // Log do erro aqui
+        logger.error(`checkApiResponse falhou para ${serviceName}: ${errorMessage}`);
         throw error;
     }
-     // Log apenas se for sucesso com status 2
-    if (serviceName === 'ActionButtonsSP.executeSTP' && data.status === '2') {
-         logger.info(`checkApiResponse: ${serviceName} retornou status 2 (Sucesso com aviso): ${data.statusMessage}`);
-    }
 };
+// --- FIM DA MODIFICAÇÃO ---
 
 
 const getWarehouses = async (req, res, next) => {
@@ -57,7 +45,7 @@ const getWarehouses = async (req, res, next) => {
     try {
         const sql = `SELECT CODARM, CODARM || '-' || DESARM FROM AD_CADARM WHERE CODARM IN (SELECT CODARM FROM AD_PERMEND WHERE NUMREG = ${sanitizeNumber(numreg)}) ORDER BY CODARM`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
-        checkApiResponse(data, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+        checkApiResponse(data, 'DbExplorerSP.executeQuery (getWarehouses)');
         if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
 
         const warehouses = data.responseBody.rows || [];
@@ -87,7 +75,7 @@ const getPermissions = async (req, res, next) => {
     try {
         const sql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
-        checkApiResponse(data, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+        checkApiResponse(data, 'DbExplorerSP.executeQuery (getPermissions)');
 
         let permissions;
         if (!data.responseBody?.rows?.length) {
@@ -145,7 +133,7 @@ const searchItems = async (req, res, next) => {
         }
 
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: sql + orderBy });
-        checkApiResponse(data, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+        checkApiResponse(data, 'DbExplorerSP.executeQuery (searchItems)');
         if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
         res.json(data.responseBody.rows || []);
     } catch (error){
@@ -161,7 +149,7 @@ const getItemDetails = async (req, res, next) => {
     try {
         const sql = `SELECT * FROM V_WMS_ITEM_DETALHES WHERE CODARM = ${sanitizeNumber(codArm)} AND SEQEND = ${sanitizeNumber(sequencia)}`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
-        checkApiResponse(data, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+        checkApiResponse(data, 'DbExplorerSP.executeQuery (getItemDetails)');
         if (!data.responseBody?.rows?.length) {
             throw new Error('Produto não encontrado ou detalhes indisponíveis.');
         }
@@ -179,7 +167,7 @@ const getPickingLocations = async (req, res, next) => {
     try {
         const sql = `SELECT ENDE.SEQEND, PRO.DESCRPROD FROM AD_CADEND ENDE JOIN TGFPRO PRO ON ENDE.CODPROD = PRO.CODPROD WHERE ENDE.CODARM = ${sanitizeNumber(codarm)} AND ENDE.CODPROD = ${sanitizeNumber(codprod)} AND ENDE.ENDPIC = 'S' AND ENDE.SEQEND <> ${sanitizeNumber(sequencia)} ORDER BY ENDE.SEQEND`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
-        checkApiResponse(data, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+        checkApiResponse(data, 'DbExplorerSP.executeQuery (getPickingLocations)');
         if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
         res.json(data.responseBody.rows || []);
     } catch (error) {
@@ -203,7 +191,7 @@ const getHistory = async (req, res, next) => {
             WHERE H.CODUSU = ${codusu} AND TRUNC(H.DTHOPER) = TO_DATE('${hoje}', 'DD/MM/YYYY')
             ORDER BY 2 DESC, 15 ASC`;
         const data = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql });
-        checkApiResponse(data, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+        checkApiResponse(data, 'DbExplorerSP.executeQuery (getHistory)');
         if (!data.responseBody) throw new Error('A resposta da API não contém o corpo de dados esperado (responseBody).');
         res.json(data.responseBody.rows || []);
     } catch (error) {
@@ -235,7 +223,7 @@ const executeTransaction = async (req, res, next) => {
         } else {
              const permCheckSql = `SELECT BAIXA, TRANSF, PICK, CORRE, BXAPICK, CRIAPICK FROM AD_APPPERM WHERE CODUSU = ${sanitizeNumber(codusu)}`;
              const permData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: permCheckSql });
-             checkApiResponse(permData, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+             checkApiResponse(permData, 'DbExplorerSP.executeQuery (checkPermissions)');
              if (!permData.responseBody.rows.length) {
                  permissions = { baixa: false, transfer: false, pick: false, corre: false, bxaPick: false, criaPick: false };
              } else {
@@ -264,40 +252,39 @@ const executeTransaction = async (req, res, next) => {
              const { codarm, sequencia, newQuantity } = payload;
              const itemSql = `SELECT DEND.CODPROD, DEND.CODVOL, DEND.DATENT, DEND.DATVAL, DEND.QTDPRO, PRO.MARCA, (SELECT MAX(V.DESCRDANFE) FROM TGFVOA V WHERE V.CODPROD = DEND.CODPROD AND V.CODVOL = DEND.CODVOL) AS DERIVACAO FROM AD_CADEND DEND JOIN TGFPRO PRO ON DEND.CODPROD = PRO.CODPROD WHERE DEND.CODARM = ${sanitizeNumber(codarm)} AND DEND.SEQEND = ${sanitizeNumber(sequencia)}`;
              const itemData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: itemSql });
-             checkApiResponse(itemData, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+             checkApiResponse(itemData, 'DbExplorerSP.executeQuery (getItemForCorrection)');
              if (!itemData.responseBody.rows.length) throw new Error('Item não encontrado para correção.');
 
              const [codprod, codvol, datent, datval, qtdAnterior, marca, derivacao] = itemData.responseBody.rows[0];
              const scriptRequestBody = { runScript: { actionID: "97", refreshType: "SEL", params: { param: [ { type: "S", paramName: "CODPROD", $: codprod }, { type: "S", paramName: "CODVOL", $: codvol || '' }, { type: "F", paramName: "QTDPRO", $: newQuantity }, { type: "D", paramName: "DATENT", $: formatDbDateToApi(datent) }, { type: "D", paramName: "DATVAL", $: formatDbDateToApi(datval) } ] }, rows: { row: [{ field: [ { fieldName: "CODARM", $: codarm.toString() }, { fieldName: "SEQEND", $: sequencia.toString() } ] }] } }, clientEventList: { clientEvent: [{ "$": "br.com.sankhya.actionbutton.clientconfirm" }] } };
 
-             // Chamada ActionButtonsSP.executeScript continua com token do sistema
-             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody);
-             checkApiResponse(result, 'ActionButtonsSP.executeScript'); // Passa o nome do serviço
+             // --- INÍCIO DA MODIFICAÇÃO ---
+             // Chamada ActionButtonsSP.executeScript AGORA usa sessão do usuário
+             const result = await callSankhyaService('ActionButtonsSP.executeScript', scriptRequestBody, jsessionid, codusu);
+             // A linha checkApiResponse(result, ...) foi REMOVIDA daqui.
+             // O callSankhyaService já tratou o status 2 como sucesso e não vai lançar erro.
+             // --- FIM DA MODIFICAÇÃO ---
 
              const histRecord = { entityName: 'AD_HISTENDAPP', fields: ['CODARM', 'SEQEND', 'CODPROD', 'CODVOL', 'MARCA', 'DERIV', 'QUANT', 'QATUAL', 'CODUSU'], records: [{ values: { 0: codarm, 1: sequencia, 2: codprod, 3: codvol, 4: marca, 5: derivacao, 6: qtdAnterior, 7: newQuantity, 8: codusu }}]};
 
              // Salva histórico com sessão do usuário
-             await callSankhyaService('DatasetSP.save', histRecord, jsessionid, codusu);
-             // Não precisa checar a resposta do save do histórico aqui, se falhar, o log indicará
+             const histResult = await callSankhyaService('DatasetSP.save', histRecord, jsessionid, codusu);
+             // --- INÍCIO DA MODIFICAÇÃO: Verifica a resposta do save do histórico ---
+             // Esta chamada (DatasetSP.save) DEVE retornar status 1, então checamos.
+             checkApiResponse(histResult, 'DatasetSP.save (saveCorrectionHistory)');
+             // --- FIM DA MODIFICAÇÃO ---
 
              logger.info(`Histórico de correção salvo para SEQEND ${sequencia}.`);
              return res.json({ message: result.statusMessage || 'Correção executada com sucesso!' });
         }
 
+        // Lógica para Baixa, Transferência e Picking (mantida)
         const hoje = new Date().toLocaleDateString('pt-BR');
 
-        // Cria cabeçalho com sessão do usuário
         const cabecalhoData = await callSankhyaService(
-            'DatasetSP.save',
-            {
-                entityName: 'AD_BXAEND',
-                fields: ['SEQBAI', 'DATGER', 'USUGER'],
-                records: [{ values: { 1: hoje, 2: codusu.toString() } }],
-            },
-            jsessionid,
-            codusu
+            'DatasetSP.save', { entityName: 'AD_BXAEND', fields: ['SEQBAI', 'DATGER', 'USUGER'], records: [{ values: { 1: hoje, 2: codusu.toString() } }], }, jsessionid, codusu
         );
-        checkApiResponse(cabecalhoData, 'DatasetSP.save'); // Passa o nome do serviço
+        checkApiResponse(cabecalhoData, 'DatasetSP.save (createHeader)');
         if (!cabecalhoData.responseBody.result?.[0]?.[0]) {
             throw new Error(cabecalhoData.statusMessage || 'Falha ao criar cabeçalho da transação.');
         }
@@ -312,109 +299,50 @@ const executeTransaction = async (req, res, next) => {
                   logger.warn(`Tentativa de baixa de picking (SEQEND: ${payload.sequencia}) bloqueada por falta de permissão BXAPICK para ${username}.`);
                   throw new Error('Você não tem permissão para baixar itens de uma área de picking.');
              }
-            batchRecords.push({
-                values: {
-                    '0': seqBai.toString(),
-                    '1': payload.codarm.toString(),
-                    '2': payload.sequencia.toString(),
-                    '3': null,
-                    '4': null,
-                    '5': formatQuantityForSankhya(payload.quantidade),
-                    '6': 'S'
-                }
-            });
+            batchRecords.push({ values: { '0': seqBai.toString(), '1': payload.codarm.toString(), '2': payload.sequencia.toString(), '3': null, '4': null, '5': formatQuantityForSankhya(payload.quantidade), '6': 'S' } });
         } else if (type === 'transferencia' || type === 'picking') {
             const { codarm, sequencia, codprod, endpic: origemEndpic } = payload.origem;
             const { armazemDestino, enderecoDestino, quantidade, criarPick } = payload.destino;
-
-             if (origemEndpic === 'S' && !permissions.bxaPick) {
-                  logger.warn(`Tentativa de ${type} originada de picking (SEQEND: ${sequencia}) bloqueada por falta de permissão BXAPICK para ${username}.`);
-                  throw new Error('Você não tem permissão para mover itens de uma área de picking.');
-             }
-
+            if (origemEndpic === 'S' && !permissions.bxaPick) {
+                logger.warn(`Tentativa de ${type} originada de picking (SEQEND: ${sequencia}) bloqueada por falta de permissão BXAPICK para ${username}.`);
+                throw new Error('Você não tem permissão para mover itens de uma área de picking.');
+            }
             const canCreatePick = criarPick === true && permissions.criaPick;
 
-            // Verifica destino com token do sistema
             const checkSql = `SELECT CODPROD, QTDPRO FROM AD_CADEND WHERE SEQEND = '${sanitizeStringForSql(enderecoDestino)}' AND CODARM = ${sanitizeNumber(armazemDestino)}`;
             const checkData = await callSankhyaAsSystem('DbExplorerSP.executeQuery', { sql: checkSql });
-            checkApiResponse(checkData, 'DbExplorerSP.executeQuery'); // Passa o nome do serviço
+            checkApiResponse(checkData, 'DbExplorerSP.executeQuery (checkDestination)');
             const destinationItem = checkData.responseBody.rows.length > 0 ? checkData.responseBody.rows[0] : null;
 
             if (destinationItem && destinationItem[0] === codprod) {
-                batchRecords.push({
-                    values: {
-                        '0': seqBai.toString(),
-                        '1': armazemDestino.toString(),
-                        '2': enderecoDestino,
-                        '3': null,
-                        '4': null,
-                        '5': formatQuantityForSankhya(destinationItem[1]),
-                        '6': 'S'
-                    }
-                });
+                batchRecords.push({ values: { '0': seqBai.toString(), '1': armazemDestino.toString(), '2': enderecoDestino, '3': null, '4': null, '5': formatQuantityForSankhya(destinationItem[1]), '6': 'S' } });
             }
+            batchRecords.push({ values: { '0': seqBai.toString(), '1': codarm.toString(), '2': sequencia.toString(), '3': armazemDestino.toString(), '4': enderecoDestino, '5': formatQuantityForSankhya(quantidade), '6': 'S' } });
 
-            batchRecords.push({
-                values: {
-                    '0': seqBai.toString(),
-                    '1': codarm.toString(),
-                    '2': sequencia.toString(),
-                    '3': armazemDestino.toString(),
-                    '4': enderecoDestino,
-                    '5': formatQuantityForSankhya(quantidade),
-                    '6': 'S'
-                }
-            });
-
-             // Atualiza ENDPIC do destino com sessão do usuário, se necessário
              if (type === 'transferencia' && canCreatePick) {
                  logger.info(`Tentando marcar o destino ${armazemDestino}-${enderecoDestino} como picking usando a sessão do usuário.`);
                  try {
-                     const updateResult = await callSankhyaService(
-                        'DatasetSP.save',
-                        {
-                            entityName: 'CADEND', standAlone: false, fields: ['CODARM', 'SEQEND', 'ENDPIC'],
-                            records: [{ pk: { CODARM: armazemDestino.toString(), SEQEND: enderecoDestino }, values: { '2': 'S' }}]
-                        },
-                        jsessionid,
-                        codusu
-                     );
-                     // Só loga sucesso, o checkApiResponse não é crucial aqui
-                     if (updateResult.status === '1') {
-                         logger.info(`Destino ${enderecoDestino} no armazém ${armazemDestino} foi definido como um local de picking.`);
-                     } else {
-                          logger.warn(`Falha (não crítica) ao definir ENDPIC='S' no destino: ${updateResult.statusMessage || 'Status não é 1'}`);
-                     }
+                     const updateResult = await callSankhyaService( 'DatasetSP.save', { entityName: 'CADEND', standAlone: false, fields: ['CODARM', 'SEQEND', 'ENDPIC'], records: [{ pk: { CODARM: armazemDestino.toString(), SEQEND: enderecoDestino }, values: { '2': 'S' }}] }, jsessionid, codusu );
+                     checkApiResponse(updateResult, 'DatasetSP.save (updateEndPic)');
+                     logger.info(`Destino ${enderecoDestino} no armazém ${armazemDestino} foi definido como um local de picking.`);
                  } catch (updateError) {
-                      logger.warn(`Erro (não crítico) ao tentar definir ENDPIC='S' no destino: ${updateError.message}`);
+                      logger.warn(`Falha (não crítica) ao definir ENDPIC='S' no destino: ${updateError.message}`);
                  }
              } else if (type === 'transferencia' && criarPick === true && !permissions.criaPick) {
                   logger.warn(`Usuário ${username} tentou marcar destino como picking sem permissão CRIAPICK. A flag ENDPIC não será alterada.`);
              }
         }
 
-        // Salva itens com sessão do usuário
         if (batchRecords.length > 0) {
-            const batchSavePayload = {
-                entityName: 'AD_IBXEND',
-                fields: itemFields,
-                standAlone: false,
-                records: batchRecords
-            };
+            const batchSavePayload = { entityName: 'AD_IBXEND', fields: itemFields, standAlone: false, records: batchRecords };
             logger.debug(`Enviando batch save para AD_IBXEND com ${batchRecords.length} registros para SEQBAI ${seqBai}.`);
-            const batchResult = await callSankhyaService(
-                'DatasetSP.save',
-                batchSavePayload,
-                jsessionid,
-                codusu
-            );
-            checkApiResponse(batchResult, 'DatasetSP.save'); // Passa o nome do serviço
+            const batchResult = await callSankhyaService('DatasetSP.save', batchSavePayload, jsessionid, codusu);
+            checkApiResponse(batchResult, 'DatasetSP.save (saveItems)');
             logger.info(`${batchRecords.length} item(ns) AD_IBXEND salvos via batch para a transação ${seqBai}.`);
         } else {
              logger.warn(`Nenhum registro AD_IBXEND para salvar na transação ${seqBai}.`);
         }
 
-        // Polling com token do sistema
         const pollSql = `SELECT COUNT(*) FROM AD_IBXEND WHERE SEQBAI = ${seqBai} AND CODPROD IS NOT NULL`;
         let isPopulated = false;
         const expectedCount = batchRecords.length;
@@ -432,24 +360,13 @@ const executeTransaction = async (req, res, next) => {
         }
         logger.info(`Polling de CODPROD bem-sucedido para a transação ${seqBai}.`);
 
-        // Executa procedure com token do sistema
-        const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', {
-            stpCall: {
-                actionID: '20', procName: 'NIC_STP_BAIXA_END', rootEntity: 'AD_BXAEND',
-                rows: { row: [{ field: [{ fieldName: 'SEQBAI', $: seqBai }] }] },
-            },
-        });
+        const stpData = await callSankhyaService('ActionButtonsSP.executeSTP', { stpCall: { actionID: '20', procName: 'NIC_STP_BAIXA_END', rootEntity: 'AD_BXAEND', rows: { row: [{ field: [{ fieldName: 'SEQBAI', $: seqBai }] }] }, }, });
+        // checkApiResponse foi removido daqui pois callSankhyaService já trata status 1 e 2 como sucesso para este serviço
 
-        // --- INÍCIO DA MODIFICAÇÃO (Remover check stpData.status !== '1') ---
-        // A validação agora é feita dentro do checkApiResponse, que considera status 2 como sucesso para STP
-        checkApiResponse(stpData, 'ActionButtonsSP.executeSTP'); // Passa o nome do serviço
-        // --- FIM DA MODIFICAÇÃO ---
-
-        logger.info(`Transação ${type} (SEQBAI: ${seqBai}) finalizada com sucesso para o usuário ${username}.`);
+        logger.info(`Transação ${type} (SEQBAI: ${seqBai}) finalizada com sucesso para o usuário ${username}. Status da STP: ${stpData.status}`);
         res.json({ message: stpData.statusMessage || 'Operação concluída com sucesso!' });
 
     } catch (error) {
-        // Log detalhado do erro antes de passar para o errorHandler
         logger.error(`Erro durante executeTransaction (${type}) para usuário ${username}: ${error.message}`, { stack: error.stack, sankhyaResponse: error.sankhyaResponse });
         next(error);
     }
