@@ -128,7 +128,6 @@ const login = async (req, res, next) => {
         }
         logger.info(`Senha validada com sucesso para o usuário ${username}.`);
 
-        // --- INÍCIO DA MODIFICAÇÃO (EXTRAÇÃO JSESSIONID) ---
         // Extrai o jsessionid da resposta do login
         const jsessionid = loginResponse.responseBody?.jsessionid?.$ || null;
         if (!jsessionid) {
@@ -141,7 +140,6 @@ const login = async (req, res, next) => {
         // Inclui o jsessionid no payload do token JWT
         const sessionPayload = { username: username, codusu: codUsu, nomeusu: nomeUsu, numreg: numReg, jsessionid: jsessionid };
         const sessionToken = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '8h' });
-        // --- FIM DA MODIFICAÇÃO ---
 
         res.cookie('sessionToken', sessionToken, {
             httpOnly: true,
@@ -157,15 +155,18 @@ const login = async (req, res, next) => {
 
         logger.info(`Usuário ${username} logado com sucesso com device ${deviceTokenToUse}.`);
 
+        // --- INÍCIO DA MODIFICAÇÃO PARA A RESPOSTA ---
         res.json({
             username: username,
             codusu: codUsu,
             nomeusu: nomeUsu,
             numreg: numReg,
             deviceToken: deviceTokenToUse,
-            sessionToken: sessionToken, // O token JWT local, não o do Sankhya
+            sessionToken: sessionToken, // O token JWT local
+            snkjsessionid: jsessionid, // Adiciona o jsessionid do Sankhya aqui
             isTestEnvironment: isTestEnvironment
         });
+        // --- FIM DA MODIFICAÇÃO PARA A RESPOSTA ---
 
     } catch (error) {
         logger.error(`Falha inesperada no processo de login para ${username}: ${error.message}`, { stack: error.stack });
